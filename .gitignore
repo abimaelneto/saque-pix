@@ -1,0 +1,43 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Composer
+/vendor/
+composer.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+storage/logs/*
+runtime/*
+
+# Cache
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Docker
+mysql_data/
+
+# Testing
+.phpunit.result.cache
+coverage/
+
+# Build
+build/
+dist/
+
+*.md
+*.txt

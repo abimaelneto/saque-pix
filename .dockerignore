@@ -1,0 +1,11 @@
+vendor/
+.git/
+.gitignore
+.env
+.env.*
+*.log
+runtime/
+.DS_Store
+.idea/
+.vscode/
+
