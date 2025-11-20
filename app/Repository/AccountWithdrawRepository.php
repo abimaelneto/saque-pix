@@ -50,4 +50,16 @@ class AccountWithdrawRepository
 
         return AccountWithdraw::where('id', $id)->update($data) > 0;
     }
+
+    /**
+     * Encontra saques recentes de uma conta
+     */
+    public function findRecentByAccount(string $accountId, \DateTime $since): array
+    {
+        return AccountWithdraw::where('account_id', $accountId)
+            ->where('created_at', '>=', $since)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->toArray();
+    }
 }
