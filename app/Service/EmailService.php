@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Model\AccountWithdraw;
-use Hyperf\Mailer\MailerFactory;
+use App\Service\MetricsService;
 use Psr\Log\LoggerInterface;
 
 class EmailService
 {
     public function __construct(
-        private MailerFactory $mailerFactory,
         private LoggerInterface $logger,
+        private MetricsService $metricsService,
     ) {
     }
 
@@ -40,18 +40,37 @@ class EmailService
             $subject = 'Saque PIX Realizado';
             $body = $this->buildEmailBody($withdraw, $pix, $dateTime);
 
-            $mailer = $this->mailerFactory->get();
-            $mailer->to($pix->key)->send(function ($message) use ($subject, $body) {
-                $message->subject($subject)->html($body);
-            });
+            // Em ambiente de testes, não tentar enviar emails reais
+            if (env('APP_ENV') === 'testing') {
+                $this->logger->info('Email send skipped in testing environment', [
+                    'withdraw_id' => $withdraw->id,
+                    'email' => $pix->key,
+                ]);
 
+                return true;
+            }
+
+            // Implementação usando mail() do PHP
+            // Em produção serverless, usar serviço de email (SES, SendGrid, etc.)
+            // ou enfileirar via queue system
+            $headers = "MIME-Version: 1.0\r\n";
+            $headers .= "Content-type: text/html; charset=UTF-8\r\n";
+            $headers .= "From: " . env('MAIL_FROM_ADDRESS', 'noreply@saque-pix.local') . "\r\n";
+            
+            $sent = @mail($pix->key, $subject, $body, $headers);
+
+            $this->metricsService->recordEmailSent($sent);
+            
             $this->logger->info('Withdraw notification email sent', [
                 'withdraw_id' => $withdraw->id,
                 'email' => $pix->key,
+                'sent' => $sent,
             ]);
 
-            return true;
+            return $sent;
         } catch (\Exception $e) {
+            $this->metricsService->recordEmailSent(false);
+            
             $this->logger->error('Failed to send withdraw notification email', [
                 'withdraw_id' => $withdraw->id,
                 'error' => $e->getMessage(),
