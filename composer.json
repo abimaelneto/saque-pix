@@ -36,7 +36,8 @@
         "psr/container": "^2.0",
         "psr/event-dispatcher": "^1.0",
         "psr/log": "^3.0",
-        "ramsey/uuid": "^4.7"
+        "ramsey/uuid": "^4.7",
+        "nesbot/carbon": "^2.0"
     },
     "require-dev": {
         "hyperf/devtool": "^3.1",

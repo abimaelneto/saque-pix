@@ -1,0 +1,42 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Command;
+
+use App\Service\WithdrawService;
+use Hyperf\Command\Command as HyperfCommand;
+use Hyperf\Command\Annotation\Command;
+use Hyperf\Crontab\Annotation\Crontab;
+use Psr\Container\ContainerInterface;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
+#[Command]
+class ProcessScheduledWithdrawsCommand extends HyperfCommand
+{
+    public function __construct(
+        protected ContainerInterface $container,
+    ) {
+        parent::__construct('withdraw:process-scheduled');
+    }
+
+    public function configure(): void
+    {
+        $this->setDescription('Process scheduled withdraws');
+    }
+
+    #[Crontab(name: 'ProcessScheduledWithdraws', rule: '* * * * *', memo: 'Process scheduled withdraws')]
+    public function handle(InputInterface $input, OutputInterface $output): int
+    {
+        $output->writeln('Processing scheduled withdraws...');
+
+        $withdrawService = $this->container->get(WithdrawService::class);
+        $processed = $withdrawService->processScheduledWithdraws();
+
+        $output->writeln("Processed {$processed} scheduled withdraw(s).");
+
+        return 0;
+    }
+}
+
