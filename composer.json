@@ -20,7 +20,6 @@
         "hyperf/redis": "^3.1",
         "hyperf/async-queue": "^3.1",
         "hyperf/crontab": "^3.1",
-        "hyperf/mailer": "^3.1",
         "hyperf/config": "^3.1",
         "hyperf/command": "^3.1",
         "hyperf/consul": "^3.1",
@@ -42,7 +41,8 @@
     "require-dev": {
         "hyperf/devtool": "^3.1",
         "hyperf/testing": "^3.1",
-        "phpunit/phpunit": "^10.0"
+        "phpunit/phpunit": "^10.0",
+        "mockery/mockery": "^1.6"
     },
     "autoload": {
         "psr-4": {
@@ -67,7 +67,12 @@
     "scripts": {
         "post-autoload-dump": [
             "php bin/hyperf.php di:init-proxy"
-        ]
+        ],
+        "test": "phpunit --testsuite=All",
+        "test:unit": "phpunit --testsuite=Unit",
+        "test:integration": "phpunit --testsuite=Integration",
+        "test:stress": "phpunit --testsuite=Stress",
+        "test:coverage": "phpunit --coverage-html coverage --testsuite=All"
     }
 }
 

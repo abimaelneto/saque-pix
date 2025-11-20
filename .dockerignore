@@ -8,4 +8,10 @@ runtime/
 .DS_Store
 .idea/
 .vscode/
-
+.phpunit.cache/
+coverage/
+tests/
+*.md
+*.txt
+serverless.yml
+lambda/

@@ -12,11 +12,10 @@ return [
             ],
         ],
         'formatter' => [
-            'class' => \Monolog\Formatter\LineFormatter::class,
+            'class' => \Monolog\Formatter\JsonFormatter::class,
             'constructor' => [
-                'format' => null,
-                'dateFormat' => 'Y-m-d H:i:s',
-                'allowInlineLineBreaks' => true,
+                'dateFormat' => 'Y-m-d\TH:i:s.v\Z',
+                'appendNewline' => true,
             ],
         ],
     ],

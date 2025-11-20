@@ -16,11 +16,11 @@ return [
         'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
         'prefix' => env('DB_PREFIX', ''),
         'pool' => [
-            'min_connections' => 1,
-            'max_connections' => 10,
-            'connect_timeout' => 10.0,
-            'wait_timeout' => 3.0,
-            'heartbeat' => -1,
+            'min_connections' => (int) env('DB_POOL_MIN', 1),
+            'max_connections' => (int) env('DB_POOL_MAX', 50),
+            'connect_timeout' => (float) env('DB_CONNECT_TIMEOUT', 10.0),
+            'wait_timeout' => (float) env('DB_WAIT_TIMEOUT', 3.0),
+            'heartbeat' => (float) env('DB_HEARTBEAT', -1),
             'max_idle_time' => (float) env('DB_MAX_IDLE_TIME', 60),
         ],
         'commands' => [

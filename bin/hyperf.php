@@ -14,7 +14,8 @@ date_default_timezone_set('America/Sao_Paulo');
 require BASE_PATH . '/vendor/autoload.php';
 require BASE_PATH . '/helper.php';
 
-\Swoole\Runtime::enableCoroutine(true);
+// Coroutine runtime is enabled by the HTTP server bootstrap. For CLI tooling (composer scripts),
+// enabling it here can break commands that rely on proc_open. Leave it disabled in this context.
 
 (function () {
     \Hyperf\Di\ClassLoader::init();

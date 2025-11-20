@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   app:
@@ -14,6 +13,7 @@ services:
       - "9501:9501"
     depends_on:
       - mysql
+      - redis
       - mailhog
     networks:
       - saque-pix-network
@@ -24,6 +24,9 @@ services:
       - DB_DATABASE=${DB_DATABASE:-saque_pix}
       - DB_USERNAME=${DB_USERNAME:-root}
       - DB_PASSWORD=${DB_PASSWORD:-root}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       - MAIL_HOST=mailhog
       - MAIL_PORT=1025
     command: tail -f /dev/null
@@ -31,13 +34,10 @@ services:
   mysql:
     image: mysql:8.0
     container_name: saque-pix-mysql
-    ports:
-      - "3306:3306"
+    # Porta não exposta externamente - containers se comunicam pela rede interna
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-root}
       - MYSQL_DATABASE=${DB_DATABASE:-saque_pix}
-      - MYSQL_USER=${DB_USERNAME:-root}
-      - MYSQL_PASSWORD=${DB_PASSWORD:-root}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -49,6 +49,15 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: saque-pix-redis
+    networks:
+      - saque-pix-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
   mailhog:
     image: mailhog/mailhog:latest
     container_name: saque-pix-mailhog
@@ -58,10 +67,43 @@ services:
     networks:
       - saque-pix-network
 
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: saque-pix-prometheus
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    networks:
+      - saque-pix-network
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: saque-pix-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GRAFANA_ALERT_EMAIL=${GRAFANA_ALERT_EMAIL:-alerts@saque-pix.local}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - saque-pix-network
+
 networks:
   saque-pix-network:
     driver: bridge
 
 volumes:
   mysql_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
 
