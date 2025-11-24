@@ -67,6 +67,8 @@ services:
     networks:
       - saque-pix-network
 
+  # Prometheus e Grafana são opcionais (observabilidade)
+  # Se a porta 9090 estiver em uso, comente este serviço ou mude a porta
   prometheus:
     image: prom/prometheus:v2.52.0
     container_name: saque-pix-prometheus
@@ -74,11 +76,13 @@ services:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "9091:9090"  # Mudado para 9091 para evitar conflitos
     depends_on:
       - app
     networks:
       - saque-pix-network
+    profiles:
+      - observability  # Opcional: use 'docker-compose --profile observability up' para incluir
 
   grafana:
     image: grafana/grafana:10.4.3
@@ -91,11 +95,13 @@ services:
       - grafana_data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning
     ports:
-      - "3000:3000"
+      - "3001:3000"  # Mudado para 3001 para evitar conflitos
     depends_on:
       - prometheus
     networks:
       - saque-pix-network
+    profiles:
+      - observability  # Opcional: use 'docker-compose --profile observability up' para incluir
 
 networks:
   saque-pix-network:

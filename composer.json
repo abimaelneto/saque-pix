@@ -41,8 +41,9 @@
     "require-dev": {
         "hyperf/devtool": "^3.1",
         "hyperf/testing": "^3.1",
-        "phpunit/phpunit": "^10.0",
-        "mockery/mockery": "^1.6"
+        "hyperf/watcher": "^3.1",
+        "mockery/mockery": "^1.6",
+        "phpunit/phpunit": "^10.0"
     },
     "autoload": {
         "psr-4": {
@@ -66,7 +67,8 @@
     "prefer-stable": true,
     "scripts": {
         "post-autoload-dump": [
-            "php bin/hyperf.php di:init-proxy"
+            "@php -r \"file_exists('.phpstorm.meta.php') && unlink('.phpstorm.meta.php');\"",
+            "@php bin/hyperf.php di:init-proxy || true"
         ],
         "test": "phpunit --testsuite=All",
         "test:unit": "phpunit --testsuite=Unit",
@@ -75,4 +77,3 @@
         "test:coverage": "phpunit --coverage-html coverage --testsuite=All"
     }
 }
-

@@ -25,6 +25,9 @@ RUN pecl install swoole && docker-php-ext-enable swoole
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Install inotify-tools for file watching (Linux)
+RUN apt-get update && apt-get install -y inotify-tools && rm -rf /var/lib/apt/lists/* || true
+
 # Set working directory
 WORKDIR /var/www
 
