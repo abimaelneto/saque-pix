@@ -245,6 +245,61 @@
 			"name": "4. Saque Agendado",
 			"item": [
 				{
+					"name": "📋 Listar Saques da Conta",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/withdraws",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "withdraws"]
+						},
+						"description": "Lista todos os saques de uma conta específica\n\n**Útil para:**\n- Ver histórico de saques\n- Encontrar ID de saque agendado para cancelar\n- Verificar status de saques\n\n**Resposta inclui:**\n- ID do saque\n- Valor\n- Status (done, error, scheduled)\n- Data de agendamento (se aplicável)\n- Dados do PIX"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"// Auto-save: encontrar primeiro saque agendado pendente e salvar ID",
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.length > 0) {",
+									"        // Procurar primeiro saque agendado que não foi processado",
+									"        var scheduledWithdraw = jsonData.data.find(function(w) {",
+									"            return w.scheduled === true && w.done === false && w.error === false;",
+									"        });",
+									"        ",
+									"        if (scheduledWithdraw && scheduledWithdraw.id) {",
+									"            pm.collectionVariables.set('withdraw_id', scheduledWithdraw.id);",
+									"            console.log('✅ Saque agendado encontrado! ID salvo: ' + scheduledWithdraw.id);",
+									"        } else {",
+									"            console.log('ℹ️ Nenhum saque agendado pendente encontrado');",
+									"        }",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
 					"name": "Saque Agendado - 1 Hora",
 					"request": {
 						"method": "POST",
@@ -337,8 +392,109 @@
 							"host": ["{{base_url}}"],
 							"path": ["account", "{{account_id}}", "balance", "withdraw"]
 						},
-						"description": "Saque agendado para amanhã"
+						"description": "Saque agendado para amanhã\n\n**Após criar, copie o `id` do saque para usar no cancelamento**"
 					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"// Salvar withdraw_id para usar no cancelamento",
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.id) {",
+									"        pm.collectionVariables.set('withdraw_id', jsonData.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "✅ Cancelar Saque Agendado",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/withdraw/{{withdraw_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "withdraw", "{{withdraw_id}}"]
+						},
+						"description": "Cancela um saque agendado antes de ser processado\n\n**Validações esperadas:**\n- HTTP 200 OK\n- Campo `cancelled: true`\n- Campo `error: true`\n- Campo `error_reason: \"Cancelled by user\"`\n- Email de cancelamento enviado (verificar em http://localhost:8025)\n\n**Como usar:**\n1. Execute \"📋 Listar Saques da Conta\" primeiro - ele automaticamente salva o ID de um saque agendado\n2. Ou crie um saque agendado - o ID será salvo automaticamente\n3. Execute este request para cancelar\n\n**Nota:** O `withdraw_id` é salvo automaticamente ao listar saques ou criar saque agendado"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Withdraw is cancelled\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.cancelled).to.eql(true);",
+									"    pm.expect(jsonData.data.error).to.eql(true);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "❌ Tentar Cancelar Saque Já Processado",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/withdraw/{{withdraw_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "withdraw", "{{withdraw_id}}"]
+						},
+						"description": "Tenta cancelar um saque que já foi processado\n\n**Resultado esperado:**\n- HTTP 400 Bad Request\n- Mensagem: \"Cannot cancel already processed withdraw\""
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response has error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"response": []
 				}
 			]
@@ -705,6 +861,12 @@
 			"value": "test-token",
 			"type": "string",
 			"description": "Token de autenticação para desenvolvimento local"
+		},
+		{
+			"key": "withdraw_id",
+			"value": "",
+			"type": "string",
+			"description": "ID do saque (UUID). Obtenha criando um saque agendado e copiando o `id` da resposta"
 		}
 	]
 }
