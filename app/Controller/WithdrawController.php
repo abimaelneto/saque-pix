@@ -208,5 +208,221 @@ class WithdrawController
             ])->withStatus(500);
         }
     }
+
+    /**
+     * Cancela um saque agendado
+     * DELETE /account/{accountId}/withdraw/{withdrawId}
+     */
+    public function cancel(
+        string $accountId,
+        string $withdrawId,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): PsrResponseInterface {
+        // Verificar autorização: usuário só pode cancelar saques da própria conta
+        $userAccountId = $request->getAttribute('account_id');
+        $userId = $request->getAttribute('user_id');
+        
+        if ($userAccountId && $userAccountId !== $accountId) {
+            $this->auditService->logUnauthorizedAccess(
+                "cancel_withdraw:{$withdrawId}",
+                $userId,
+                $userAccountId
+            );
+            
+            return $response->json([
+                'success' => false,
+                'error' => 'Forbidden',
+                'message' => 'You do not have permission to cancel this withdraw',
+            ])->withStatus(403);
+        }
+
+        // Validar UUIDs
+        if (!\Ramsey\Uuid\Uuid::isValid($accountId)) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Invalid account ID format',
+                'message' => 'Account ID must be a valid UUID',
+            ])->withStatus(400);
+        }
+
+        if (!\Ramsey\Uuid\Uuid::isValid($withdrawId)) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Invalid withdraw ID format',
+                'message' => 'Withdraw ID must be a valid UUID',
+            ])->withStatus(400);
+        }
+
+        try {
+            $cancelled = $this->withdrawService->cancelScheduledWithdraw($withdrawId, $userId);
+
+            if (!$cancelled) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Failed to cancel withdraw',
+                    'message' => 'Unable to cancel the withdraw',
+                ])->withStatus(500);
+            }
+
+            // Buscar withdraw atualizado
+            $withdraw = $this->withdrawService->getWithdrawById($withdrawId);
+
+            return $response->json([
+                'success' => true,
+                'data' => [
+                    'id' => $withdraw->id,
+                    'account_id' => $withdraw->account_id,
+                    'cancelled' => true,
+                    'error' => $withdraw->error,
+                    'error_reason' => $withdraw->error_reason,
+                    'updated_at' => $withdraw->updated_at->format('Y-m-d H:i:s'),
+                ],
+                'message' => 'Scheduled withdraw cancelled successfully',
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            $logger = \Hyperf\Context\ApplicationContext::getContainer()
+                ->get(\Psr\Log\LoggerInterface::class);
+            $logger->warning('Invalid argument in cancel withdraw', [
+                'account_id' => $accountId,
+                'withdraw_id' => $withdrawId,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Verificar tipo de erro
+            if (stripos($e->getMessage(), 'not found') !== false) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Withdraw not found',
+                    'message' => "Withdraw with ID '{$withdrawId}' does not exist",
+                ])->withStatus(404);
+            }
+
+            if (stripos($e->getMessage(), 'only scheduled') !== false) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Invalid withdraw type',
+                    'message' => 'Only scheduled withdraws can be cancelled',
+                ])->withStatus(400);
+            }
+
+            if (stripos($e->getMessage(), 'already processed') !== false) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Cannot cancel',
+                    'message' => 'Cannot cancel an already processed withdraw',
+                ])->withStatus(400);
+            }
+
+            return $response->json([
+                'success' => false,
+                'error' => 'Invalid request',
+                'message' => env('APP_ENV') === 'production' 
+                    ? 'Invalid request parameters' 
+                    : $e->getMessage(),
+            ])->withStatus(400);
+        } catch (\Exception $e) {
+            $logger = \Hyperf\Context\ApplicationContext::getContainer()
+                ->get(\Psr\Log\LoggerInterface::class);
+            $logger->error('Error cancelling withdraw', [
+                'account_id' => $accountId,
+                'withdraw_id' => $withdrawId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $response->json([
+                'success' => false,
+                'error' => 'Internal server error',
+                'message' => env('APP_ENV') === 'production' 
+                    ? 'An unexpected error occurred' 
+                    : $e->getMessage(),
+            ])->withStatus(500);
+        }
+    }
+
+    /**
+     * Lista saques de uma conta
+     * GET /account/{accountId}/withdraws
+     */
+    public function list(
+        string $accountId,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): PsrResponseInterface {
+        // Verificar autorização: usuário só pode ver saques da própria conta
+        $userAccountId = $request->getAttribute('account_id');
+        $userId = $request->getAttribute('user_id');
+        
+        if ($userAccountId && $userAccountId !== $accountId) {
+            $this->auditService->logUnauthorizedAccess(
+                "list_withdraws:{$accountId}",
+                $userId,
+                $userAccountId
+            );
+            
+            return $response->json([
+                'success' => false,
+                'error' => 'Forbidden',
+                'message' => 'You do not have permission to access this account',
+            ])->withStatus(403);
+        }
+
+        // Validar UUID da conta
+        if (!\Ramsey\Uuid\Uuid::isValid($accountId)) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Invalid account ID format',
+                'message' => 'Account ID must be a valid UUID',
+            ])->withStatus(400);
+        }
+
+        try {
+            $withdraws = \App\Model\AccountWithdraw::with(['pix'])
+                ->where('account_id', $accountId)
+                ->orderBy('created_at', 'desc')
+                ->limit(100)
+                ->get();
+
+            return $response->json([
+                'success' => true,
+                'count' => $withdraws->count(),
+                'data' => $withdraws->map(function ($withdraw) {
+                    return [
+                        'id' => $withdraw->id,
+                        'account_id' => $withdraw->account_id,
+                        'method' => $withdraw->method,
+                        'amount' => $withdraw->amount,
+                        'scheduled' => $withdraw->scheduled,
+                        'scheduled_for' => $withdraw->scheduled_for?->format('Y-m-d H:i:s'),
+                        'done' => $withdraw->done,
+                        'error' => $withdraw->error,
+                        'error_reason' => $withdraw->error_reason,
+                        'processed_at' => $withdraw->processed_at?->format('Y-m-d H:i:s'),
+                        'created_at' => $withdraw->created_at->format('Y-m-d H:i:s'),
+                        'pix' => $withdraw->pix ? [
+                            'type' => $withdraw->pix->type,
+                            'key' => $withdraw->pix->key,
+                        ] : null,
+                    ];
+                }),
+            ]);
+        } catch (\Exception $e) {
+            $logger = \Hyperf\Context\ApplicationContext::getContainer()
+                ->get(\Psr\Log\LoggerInterface::class);
+            $logger->error('Error listing withdraws', [
+                'account_id' => $accountId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $response->json([
+                'success' => false,
+                'error' => 'Internal server error',
+                'message' => env('APP_ENV') === 'production' 
+                    ? 'An unexpected error occurred' 
+                    : $e->getMessage(),
+            ])->withStatus(500);
+        }
+    }
 }
 

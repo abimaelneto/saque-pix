@@ -31,5 +31,9 @@ Router::addRoute(['POST'], '/accounts', 'App\Controller\AccountController@create
 // Rota variável DEPOIS das estáticas
 Router::addRoute(['GET'], '/accounts/{id}', 'App\Controller\AccountController@get');
 
-// Account Withdraw (prefixo /account) - Rota variável (sempre por último)
+// Account Withdraw (prefixo /account) - Rotas variáveis (sempre por último)
+// IMPORTANTE: Rotas mais específicas ANTES das genéricas
+// NOTA: Middlewares globais são aplicados automaticamente via config/autoload/middlewares.php
+Router::addRoute(['GET'], '/account/{accountId}/withdraws', 'App\Controller\WithdrawController@list');
+Router::addRoute(['DELETE'], '/account/{accountId}/withdraw/{withdrawId}', 'App\Controller\WithdrawController@cancel');
 Router::addRoute(['POST'], '/account/{accountId}/balance/withdraw', 'App\Controller\WithdrawController@withdraw');
