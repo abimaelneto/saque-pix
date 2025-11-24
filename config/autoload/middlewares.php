@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 return [
     'http' => [
-        \App\Middleware\SecurityHeadersMiddleware::class, // Primeiro: headers de segurança
-        \App\Middleware\RateLimitMiddleware::class,      // Segundo: rate limiting
-        \App\Middleware\AuthMiddleware::class,             // Terceiro: autenticação
+        \App\Middleware\CorrelationIdMiddleware::class,  // Primeiro: correlation ID (deve ser o primeiro)
+        \App\Middleware\SecurityHeadersMiddleware::class, // Headers de segurança
+        \App\Middleware\RateLimitMiddleware::class,      // Rate limiting
+        \App\Middleware\AuthMiddleware::class,            // Autenticação
         \App\Middleware\MetricsMiddleware::class,         // Último: métricas
     ],
 ];

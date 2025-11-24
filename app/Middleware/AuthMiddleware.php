@@ -23,6 +23,16 @@ class AuthMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Rotas públicas que não precisam de autenticação
+        $path = $request->getUri()->getPath();
+        $publicPaths = ['/health', '/metrics', '/metrics/json', '/admin', '/accounts'];
+        
+        foreach ($publicPaths as $publicPath) {
+            if (str_starts_with($path, $publicPath)) {
+                return $handler->handle($request);
+            }
+        }
+
         // Obter token do header Authorization
         $authHeader = $request->getHeaderLine('Authorization');
         
@@ -79,6 +89,7 @@ class AuthMiddleware implements MiddlewareInterface
             401,
             ['Content-Type' => 'application/json'],
             json_encode([
+                'success' => false,
                 'error' => 'Unauthorized',
                 'message' => $message,
             ], JSON_UNESCAPED_UNICODE)
