@@ -1,0 +1,56 @@
+sequenceDiagram
+    participant Client
+    participant Controller
+    participant WithdrawService
+    participant WithdrawRepo
+    participant CronJob
+    participant LockService
+    participant AccountRepo
+    participant EmailService
+    
+    Note over Client,WithdrawService: Fase 1: Criação do Saque Agendado
+    
+    Client->>Controller: POST /withdraw (schedule: "2024-01-20 15:00")
+    Controller->>WithdrawService: createWithdraw(dto, userId)
+    
+    WithdrawService->>WithdrawService: Validate schedule date
+    WithdrawService->>WithdrawRepo: create(scheduled=true)
+    WithdrawRepo->>MySQL: INSERT account_withdraw
+    
+    WithdrawService->>EventDispatcher: dispatch(WithdrawCreated)
+    WithdrawService-->>Controller: AccountWithdraw (done=false)
+    Controller-->>Client: 201 Created
+    
+    Note over CronJob,EmailService: Fase 2: Processamento (Cron Job)
+    
+    CronJob->>CronJob: Every minute
+    CronJob->>LockService: acquireLock(process_scheduled_withdraws)
+    LockService->>Redis: SET NX (global lock)
+    
+    alt Global Lock Acquired
+        CronJob->>WithdrawRepo: findPendingScheduled()
+        WithdrawRepo->>MySQL: SELECT WHERE scheduled_for <= NOW()
+        
+        loop For each pending withdraw
+            CronJob->>LockService: acquireLock(withdraw:process:{id})
+            
+            alt Withdraw Lock Acquired
+                CronJob->>AccountRepo: decrementBalanceIfSufficient()
+                AccountRepo->>MySQL: UPDATE balance (atomic)
+                
+                alt Balance Sufficient
+                    CronJob->>Strategy: process(withdraw)
+                    CronJob->>WithdrawRepo: markAsDone()
+                    CronJob->>EmailService: sendWithdrawNotification()
+                    EmailService->>Mailhog: Send Email
+                else Balance Insufficient
+                    CronJob->>WithdrawRepo: markAsError("Insufficient balance")
+                end
+                
+                CronJob->>LockService: releaseLock()
+            end
+        end
+        
+        CronJob->>LockService: releaseLock()
+    end
+

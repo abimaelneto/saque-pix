@@ -1,0 +1,45 @@
+graph TB
+    subgraph "Aplicação"
+        APP[Hyperf Application]
+        MW[MetricsMiddleware]
+        MS[MetricsService]
+        LOG[Structured Logging]
+    end
+    
+    subgraph "Métricas"
+        M1[HTTP Metrics<br/>latency, status codes]
+        M2[Business Metrics<br/>withdraws, amounts]
+        M3[Performance Metrics<br/>processing time]
+    end
+    
+    subgraph "Coleta"
+        PROM[Prometheus<br/>Scraper]
+    end
+    
+    subgraph "Visualização"
+        GRAF[Grafana<br/>Dashboards]
+        ALERT[Alert Rules]
+    end
+    
+    APP --> MW
+    MW --> MS
+    APP --> MS
+    APP --> LOG
+    
+    MS --> M1
+    MS --> M2
+    MS --> M3
+    
+    M1 --> PROM
+    M2 --> PROM
+    M3 --> PROM
+    
+    PROM --> GRAF
+    PROM --> ALERT
+    
+    style APP fill:#e1f5ff
+    style MS fill:#fff4e6
+    style PROM fill:#f0e6ff
+    style GRAF fill:#e6ffe6
+    style ALERT fill:#ffe6e6
+

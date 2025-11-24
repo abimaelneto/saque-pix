@@ -1,0 +1,39 @@
+sequenceDiagram
+    participant Client
+    participant Controller
+    participant WithdrawService
+    participant WithdrawRepo
+    participant MySQL
+    
+    Note over Client,MySQL: Requisição 1 (Primeira)
+    
+    Client->>Controller: POST /withdraw<br/>Idempotency-Key: abc-123
+    Controller->>WithdrawService: createWithdraw(dto, userId, "abc-123")
+    
+    WithdrawService->>WithdrawRepo: findByIdempotencyKey("abc-123")
+    WithdrawRepo->>MySQL: SELECT WHERE idempotency_key = "abc-123"
+    MySQL-->>WithdrawRepo: NULL (não existe)
+    WithdrawRepo-->>WithdrawService: NULL
+    
+    WithdrawService->>WithdrawRepo: create(idempotency_key: "abc-123")
+    WithdrawRepo->>MySQL: INSERT (UNIQUE constraint)
+    MySQL-->>WithdrawRepo: Success
+    WithdrawRepo-->>WithdrawService: AccountWithdraw
+    WithdrawService-->>Controller: AccountWithdraw
+    Controller-->>Client: 201 Created (withdraw_id: xyz-789)
+    
+    Note over Client,MySQL: Requisição 2 (Duplicada)
+    
+    Client->>Controller: POST /withdraw<br/>Idempotency-Key: abc-123
+    Controller->>WithdrawService: createWithdraw(dto, userId, "abc-123")
+    
+    WithdrawService->>WithdrawRepo: findByIdempotencyKey("abc-123")
+    WithdrawRepo->>MySQL: SELECT WHERE idempotency_key = "abc-123"
+    MySQL-->>WithdrawRepo: AccountWithdraw (xyz-789)
+    WithdrawRepo-->>WithdrawService: AccountWithdraw (xyz-789)
+    
+    WithdrawService-->>Controller: AccountWithdraw (xyz-789)
+    Controller-->>Client: 201 Created (withdraw_id: xyz-789)
+    
+    Note over Client,MySQL: Mesmo resultado, saldo não deduzido novamente
+

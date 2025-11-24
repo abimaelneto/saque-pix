@@ -1,0 +1,54 @@
+graph TB
+    subgraph "Camada 1: Network"
+        N1[HTTPS/TLS]
+        N2[Security Headers]
+    end
+    
+    subgraph "Camada 2: Authentication"
+        A1[JWT Validation]
+        A2[User Context]
+    end
+    
+    subgraph "Camada 3: Authorization"
+        AZ1[Account Ownership Check]
+        AZ2[Rate Limiting]
+    end
+    
+    subgraph "Camada 4: Validation"
+        V1[Input Validation]
+        V2[Sanitization]
+        V3[Business Rules]
+    end
+    
+    subgraph "Camada 5: Fraud Detection"
+        F1[Transaction Limits]
+        F2[Suspicious Amounts]
+        F3[PIX Key Reuse]
+    end
+    
+    subgraph "Camada 6: Audit"
+        AU1[Audit Logging]
+        AU2[Compliance]
+    end
+    
+    N1 --> A1
+    N2 --> A1
+    A1 --> A2
+    A2 --> AZ1
+    AZ1 --> AZ2
+    AZ2 --> V1
+    V1 --> V2
+    V2 --> V3
+    V3 --> F1
+    F1 --> F2
+    F2 --> F3
+    F3 --> AU1
+    AU1 --> AU2
+    
+    style N1 fill:#e6f3ff
+    style A1 fill:#fff4e6
+    style AZ1 fill:#ffe6e6
+    style V1 fill:#e6ffe6
+    style F1 fill:#f0e6ff
+    style AU1 fill:#ffe6f0
+

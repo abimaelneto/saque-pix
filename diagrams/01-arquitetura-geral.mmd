@@ -1,0 +1,53 @@
+graph TB
+    subgraph "Cliente"
+        API[API Client]
+        CLI[CLI Tools]
+    end
+    
+    subgraph "Aplicação Hyperf"
+        MW[Middlewares<br/>Auth, Rate Limit, Security]
+        CTRL[Controllers<br/>WithdrawController]
+        SVC[Services<br/>WithdrawService, EmailService]
+        STRAT[Strategies<br/>PixWithdrawStrategy]
+        EVT[Event Dispatcher]
+        LOCK[Distributed Lock<br/>Redis]
+    end
+    
+    subgraph "Infraestrutura"
+        MySQL[(MySQL 8<br/>Accounts, Withdraws)]
+        Redis[(Redis<br/>Locks, Cache, Metrics)]
+        Mailhog[Mailhog<br/>Email Testing]
+    end
+    
+    subgraph "Observabilidade"
+        Prometheus[Prometheus<br/>Metrics]
+        Grafana[Grafana<br/>Dashboards]
+    end
+    
+    subgraph "Processamento"
+        Cron[Cron Job<br/>Scheduled Withdraws]
+    end
+    
+    API --> MW
+    CLI --> MW
+    MW --> CTRL
+    CTRL --> SVC
+    SVC --> STRAT
+    SVC --> LOCK
+    SVC --> EVT
+    SVC --> MySQL
+    SVC --> Redis
+    SVC --> Mailhog
+    EVT --> SVC
+    Cron --> SVC
+    SVC --> Prometheus
+    Prometheus --> Grafana
+    
+    style API fill:#e1f5ff
+    style CLI fill:#e1f5ff
+    style MySQL fill:#fff4e6
+    style Redis fill:#ffe6e6
+    style Mailhog fill:#e6ffe6
+    style Prometheus fill:#f0e6ff
+    style Grafana fill:#f0e6ff
+

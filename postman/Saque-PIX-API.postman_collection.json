@@ -1,0 +1,711 @@
+{
+	"info": {
+		"_postman_id": "saque-pix-api-collection",
+		"name": "Saque PIX API - Testes Completos",
+		"description": "Collection completa para testar todos os requisitos do case Saque PIX",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Verifica se o servidor está rodando e se banco/redis estão OK"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Contas",
+			"item": [
+				{
+					"name": "Listar Contas",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/accounts",
+							"host": ["{{base_url}}"],
+							"path": ["accounts"]
+						},
+						"description": "Lista todas as contas cadastradas"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Response has data array\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.be.an('array');",
+									"});",
+									"",
+									"// Salvar primeiro account_id se existir",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.length > 0) {",
+									"    pm.collectionVariables.set('account_id', jsonData.data[0].id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Criar Conta",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"João Silva\",\n  \"balance\": 1000.00\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/accounts",
+							"host": ["{{base_url}}"],
+							"path": ["accounts"]
+						},
+						"description": "Cria uma nova conta\n\n**Campos:**\n- `name` (obrigatório): Nome da conta\n- `balance` (opcional): Saldo inicial (padrão: 0.00)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Response has account data\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.have.property('id');",
+									"    pm.expect(jsonData.data).to.have.property('name');",
+									"    pm.expect(jsonData.data).to.have.property('balance');",
+									"});",
+									"",
+									"// Salvar account_id automaticamente",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.success && jsonData.data && jsonData.data.id) {",
+									"    pm.collectionVariables.set('account_id', jsonData.data.id);",
+									"    console.log('Account ID salvo: ' + jsonData.data.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Buscar Conta por ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/accounts/{{account_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["accounts", "{{account_id}}"]
+						},
+						"description": "Busca uma conta específica pelo ID (UUID)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Response has account data\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.have.property('id');",
+									"    pm.expect(jsonData.data).to.have.property('name');",
+									"    pm.expect(jsonData.data).to.have.property('balance');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Saque Imediato",
+			"item": [
+				{
+					"name": "Saque Imediato - Sucesso",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"joao@email.com\"\n  },\n  \"amount\": 150.75,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Realiza um saque imediato (processa na hora)\n\n**Validações esperadas:**\n- HTTP 201 Created\n- Campo `done: true`\n- Saldo deduzido\n- Email enviado (verificar em http://localhost:8025)"
+					},
+					"response": []
+				},
+				{
+					"name": "Saque Imediato - Valor Pequeno",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Teste com valor menor para verificar processamento"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Saque Agendado",
+			"item": [
+				{
+					"name": "Saque Agendado - 1 Hora",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"joao@email.com\"\n  },\n  \"amount\": 100.00,\n  \"schedule\": \"2026-12-25 15:00\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Cria um saque agendado para data futura\n\n**Validações esperadas:**\n- HTTP 201 Created\n- Campo `scheduled: true`\n- Campo `done: false` (ainda não processado)\n- Campo `scheduled_for` com a data/hora\n- Saldo NÃO deduzido ainda\n\n**Para processar manualmente:**\ndocker-compose exec app php bin/hyperf.php withdraw:process-scheduled"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Withdraw is scheduled\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.scheduled).to.eql(true);",
+									"});",
+									"",
+									"pm.test(\"Withdraw is not done yet\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.done).to.eql(false);",
+									"});",
+									"",
+									"pm.test(\"Has scheduled_for date\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.scheduled_for).to.not.be.null;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Saque Agendado - Amanhã",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 200.00,\n  \"schedule\": \"2026-01-01 10:00\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Saque agendado para amanhã"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. Validações de Negócio",
+			"item": [
+				{
+					"name": "❌ Saldo Insuficiente",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 10000.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta sacar mais que o saldo disponível\n\n**Resultado esperado:**\n- HTTP 400 Bad Request\n- Mensagem: \"Insufficient balance\""
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response has error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "❌ Agendar para Passado",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": \"2020-01-01 15:00\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta agendar saque para data no passado\n\n**Resultado esperado:**\n- HTTP 422 Unprocessable Entity\n- Erro de validação: \"schedule\" deve ser no futuro"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 422\", function () {",
+									"    pm.response.to.have.status(422);",
+									"});",
+									"",
+									"pm.test(\"Response has validation error\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"    pm.expect(jsonData.error).to.include('Validation failed');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "❌ Método Inválido",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"TED\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta usar método diferente de PIX\n\n**Resultado esperado:**\n- HTTP 422 Unprocessable Entity\n- Erro: método deve ser \"PIX\""
+					},
+					"response": []
+				},
+				{
+					"name": "❌ Tipo PIX Inválido",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"cpf\",\n    \"key\": \"12345678900\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta usar tipo PIX diferente de email\n\n**Resultado esperado:**\n- HTTP 422 Unprocessable Entity\n- Erro: tipo deve ser \"email\""
+					},
+					"response": []
+				},
+				{
+					"name": "❌ Email Inválido",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"email-invalido\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta usar email inválido\n\n**Resultado esperado:**\n- HTTP 422 Unprocessable Entity\n- Erro de validação de email"
+					},
+					"response": []
+				},
+				{
+					"name": "❌ Valor Negativo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer test-token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": -10.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta sacar valor negativo\n\n**Resultado esperado:**\n- HTTP 422 Unprocessable Entity\n- Erro: amount deve ser maior que 0.01"
+					},
+					"response": []
+				},
+				{
+					"name": "❌ Sem Autenticação",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"PIX\",\n  \"pix\": {\n    \"type\": \"email\",\n    \"key\": \"teste@email.com\"\n  },\n  \"amount\": 50.00,\n  \"schedule\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/account/{{account_id}}/balance/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["account", "{{account_id}}", "balance", "withdraw"]
+						},
+						"description": "Tenta fazer saque sem token de autenticação\n\n**Resultado esperado:**\n- HTTP 401 Unauthorized\n- Mensagem: \"Missing or invalid authorization token\""
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test(\"Response has unauthorized error\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"    pm.expect(jsonData.error).to.include('Unauthorized');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "6. Verificações",
+			"item": [
+				{
+					"name": "Listar Saques (CLI)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Comando CLI:\ndocker-compose exec app php bin/hyperf.php withdraw:list\n\nLista todos os saques criados com seus status."
+					},
+					"response": []
+				},
+				{
+					"name": "Processar Saques Agendados (CLI)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Comando CLI para processar saques agendados manualmente:\ndocker-compose exec app php bin/hyperf.php withdraw:process-scheduled\n\n**Nota:** O cron processa automaticamente a cada minuto, mas você pode processar manualmente para testes."
+					},
+					"response": []
+				},
+				{
+					"name": "Verificar Emails - Mailhog",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8025",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8025",
+							"path": [""]
+						},
+						"description": "Acesse http://localhost:8025 no navegador para ver os emails enviados após cada saque processado.\n\n**Conteúdo esperado no email:**\n- Data e hora do saque\n- Valor sacado\n- Dados do PIX (tipo e chave)"
+					},
+					"response": []
+				},
+				{
+					"name": "Estatísticas (CLI)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Comando CLI:\ndocker-compose exec app php bin/hyperf.php stats\n\nMostra estatísticas dos saques (total, processados, pendentes, erros)."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:9501",
+			"type": "string"
+		},
+		{
+			"key": "account_id",
+			"value": "",
+			"type": "string",
+			"description": "ID da conta (UUID). Obtenha criando uma conta via CLI:\ndocker-compose exec app php bin/hyperf.php account:create \"Nome\" --balance=1000.00"
+		},
+		{
+			"key": "auth_token",
+			"value": "test-token",
+			"type": "string",
+			"description": "Token de autenticação para desenvolvimento local"
+		}
+	]
+}
+

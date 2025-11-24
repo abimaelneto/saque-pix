@@ -1,0 +1,36 @@
+classDiagram
+    class WithdrawMethodStrategy {
+        <<interface>>
+        +validate(dto) void
+        +process(withdraw) bool
+    }
+    
+    class PixWithdrawStrategy {
+        +validate(dto) void
+        +process(withdraw) bool
+        -validatePixKey(key) void
+        -simulatePixProcessing() bool
+    }
+    
+    class TedWithdrawStrategy {
+        +validate(dto) void
+        +process(withdraw) bool
+        -validateTedData() void
+    }
+    
+    class WithdrawMethodStrategyFactory {
+        +create(method) WithdrawMethodStrategy
+    }
+    
+    class WithdrawService {
+        -strategyFactory: WithdrawMethodStrategyFactory
+        +createWithdraw(dto) AccountWithdraw
+        +processWithdraw(id) bool
+    }
+    
+    WithdrawMethodStrategy <|.. PixWithdrawStrategy
+    WithdrawMethodStrategy <|.. TedWithdrawStrategy
+    WithdrawMethodStrategyFactory --> WithdrawMethodStrategy : creates
+    WithdrawService --> WithdrawMethodStrategyFactory : uses
+    WithdrawService --> WithdrawMethodStrategy : uses
+

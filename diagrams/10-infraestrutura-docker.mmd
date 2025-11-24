@@ -1,0 +1,38 @@
+graph TB
+    subgraph "Docker Compose"
+        subgraph "Aplicação"
+            APP[app: Hyperf<br/>Port 9501]
+        end
+        
+        subgraph "Banco de Dados"
+            MYSQL[mysql: MySQL 8<br/>Port 3306]
+        end
+        
+        subgraph "Cache/Locks"
+            REDIS[redis: Redis 7<br/>Port 6379]
+        end
+        
+        subgraph "Email"
+            MAIL[Mailhog<br/>Ports 1025, 8025]
+        end
+        
+        subgraph "Observabilidade"
+            PROM[prometheus<br/>Port 9090]
+            GRAF[grafana<br/>Port 3000]
+        end
+    end
+    
+    APP -->|Connects| MYSQL
+    APP -->|Locks/Cache| REDIS
+    APP -->|Sends Email| MAIL
+    APP -->|Exposes Metrics| PROM
+    PROM -->|Queries| APP
+    GRAF -->|Queries| PROM
+    
+    style APP fill:#e1f5ff
+    style MYSQL fill:#fff4e6
+    style REDIS fill:#ffe6e6
+    style MAIL fill:#e6ffe6
+    style PROM fill:#f0e6ff
+    style GRAF fill:#f0e6ff
+

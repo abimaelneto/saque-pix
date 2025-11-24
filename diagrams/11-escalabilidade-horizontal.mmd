@@ -1,0 +1,44 @@
+graph TB
+    subgraph "Load Balancer"
+        LB[Load Balancer<br/>Round Robin]
+    end
+    
+    subgraph "Instâncias Hyperf"
+        APP1[Instance 1<br/>Hyperf]
+        APP2[Instance 2<br/>Hyperf]
+        APP3[Instance N<br/>Hyperf]
+    end
+    
+    subgraph "Distributed Lock"
+        REDIS[Redis<br/>Distributed Locks]
+    end
+    
+    subgraph "Banco de Dados"
+        MYSQL[(MySQL<br/>Master)]
+        REPLICA[(MySQL<br/>Read Replica)]
+    end
+    
+    LB --> APP1
+    LB --> APP2
+    LB --> APP3
+    
+    APP1 --> REDIS
+    APP2 --> REDIS
+    APP3 --> REDIS
+    
+    APP1 --> MYSQL
+    APP2 --> MYSQL
+    APP3 --> MYSQL
+    
+    APP1 --> REPLICA
+    APP2 --> REPLICA
+    APP3 --> REPLICA
+    
+    style LB fill:#e1f5ff
+    style APP1 fill:#fff4e6
+    style APP2 fill:#fff4e6
+    style APP3 fill:#fff4e6
+    style REDIS fill:#ffe6e6
+    style MYSQL fill:#e6ffe6
+    style REPLICA fill:#e6ffe6
+

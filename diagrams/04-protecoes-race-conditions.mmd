@@ -1,0 +1,38 @@
+graph TB
+    subgraph "Camada 1: Distributed Lock (Redis)"
+        R1[Lock por Conta<br/>account:withdraw:{id}]
+        R2[Lock por Saque<br/>withdraw:process:{id}]
+        R3[Lock Global<br/>process_scheduled_withdraws]
+    end
+    
+    subgraph "Camada 2: Pessimistic Lock (MySQL)"
+        M1[SELECT FOR UPDATE<br/>Account]
+        M2[SELECT FOR UPDATE<br/>Withdraw]
+    end
+    
+    subgraph "Camada 3: Operação Atômica SQL"
+        A1[UPDATE balance<br/>WHERE balance >= amount]
+    end
+    
+    subgraph "Camada 4: Transação ACID"
+        T1[BEGIN TRANSACTION]
+        T2[COMMIT/ROLLBACK]
+    end
+    
+    R1 --> M1
+    R2 --> M2
+    R3 --> R2
+    M1 --> A1
+    M2 --> A1
+    A1 --> T1
+    T1 --> T2
+    
+    style R1 fill:#ffe6e6
+    style R2 fill:#ffe6e6
+    style R3 fill:#ffe6e6
+    style M1 fill:#fff4e6
+    style M2 fill:#fff4e6
+    style A1 fill:#e6ffe6
+    style T1 fill:#e6f3ff
+    style T2 fill:#e6f3ff
+

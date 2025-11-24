@@ -1,0 +1,38 @@
+graph LR
+    subgraph "Eventos"
+        E1[WithdrawCreated]
+        E2[WithdrawProcessed]
+        E3[WithdrawFailed]
+    end
+    
+    subgraph "Listeners"
+        L1[WithdrawCreatedListener<br/>Log + Metrics]
+        L2[WithdrawProcessedListener<br/>Analytics + Webhooks]
+        L3[WithdrawFailedListener<br/>Alert + Retry]
+    end
+    
+    subgraph "Services"
+        S1[WithdrawService]
+        S2[EmailService]
+        S3[MetricsService]
+    end
+    
+    S1 -->|dispatches| E1
+    S1 -->|dispatches| E2
+    S1 -->|dispatches| E3
+    
+    E1 -->|notifies| L1
+    E2 -->|notifies| L2
+    E3 -->|notifies| L3
+    
+    L1 --> S3
+    L2 --> S2
+    L3 --> S3
+    
+    style E1 fill:#e1f5ff
+    style E2 fill:#e1f5ff
+    style E3 fill:#ffe6e6
+    style L1 fill:#fff4e6
+    style L2 fill:#fff4e6
+    style L3 fill:#ffe6e6
+

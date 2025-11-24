@@ -1,0 +1,60 @@
+sequenceDiagram
+    participant Client
+    participant AuthMW as Auth Middleware
+    participant Controller
+    participant WithdrawService
+    participant LockService
+    participant AccountRepo
+    participant WithdrawRepo
+    participant Strategy
+    participant EmailService
+    participant EventDispatcher
+    
+    Client->>AuthMW: POST /account/{id}/balance/withdraw
+    AuthMW->>AuthMW: Validate JWT Token
+    AuthMW->>Controller: Request (with user_id)
+    
+    Controller->>Controller: Validate Input
+    Controller->>WithdrawService: createWithdraw(dto, userId)
+    
+    WithdrawService->>LockService: acquireLock(account:withdraw:{id})
+    LockService->>Redis: SET NX (distributed lock)
+    
+    alt Lock Acquired
+        WithdrawService->>AccountRepo: findByIdWithLock(accountId)
+        AccountRepo->>MySQL: SELECT FOR UPDATE
+        
+        alt Sufficient Balance
+            WithdrawService->>Strategy: validate(dto)
+            Strategy->>Strategy: Validate PIX key
+            
+            WithdrawService->>WithdrawRepo: create(withdraw)
+            WithdrawRepo->>MySQL: INSERT account_withdraw
+            
+            WithdrawService->>AccountRepo: decrementBalanceIfSufficient()
+            AccountRepo->>MySQL: UPDATE balance (atomic)
+            
+            WithdrawService->>Strategy: process(withdraw)
+            Strategy->>Strategy: Simulate PIX processing
+            
+            WithdrawService->>EmailService: sendWithdrawNotification()
+            EmailService->>Mailhog: Send Email
+            
+            WithdrawService->>EventDispatcher: dispatch(WithdrawProcessed)
+            EventDispatcher->>EventDispatcher: Notify Listeners
+            
+            WithdrawService->>LockService: releaseLock()
+            LockService->>Redis: DEL lock
+            
+            WithdrawService-->>Controller: AccountWithdraw
+            Controller-->>Client: 201 Created
+        else Insufficient Balance
+            WithdrawService->>LockService: releaseLock()
+            WithdrawService-->>Controller: InvalidArgumentException
+            Controller-->>Client: 400 Bad Request
+        end
+    else Lock Not Acquired
+        WithdrawService-->>Controller: RuntimeException
+        Controller-->>Client: 409 Conflict
+    end
+

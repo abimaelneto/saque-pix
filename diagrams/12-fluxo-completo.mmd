@@ -1,0 +1,44 @@
+flowchart TD
+    START([Cliente cria saque]) --> AUTH{Autenticado?}
+    AUTH -->|Não| ERROR1[401 Unauthorized]
+    AUTH -->|Sim| VALIDATE{Validação OK?}
+    
+    VALIDATE -->|Não| ERROR2[422 Validation Error]
+    VALIDATE -->|Sim| FRAUD{Fraude detectada?}
+    
+    FRAUD -->|Crítico/Alto| ERROR3[400 Blocked]
+    FRAUD -->|Médio| WARN[Warning Log]
+    FRAUD -->|Não| LOCK{Lock adquirido?}
+    
+    WARN --> LOCK
+    LOCK -->|Não| ERROR4[409 Conflict]
+    LOCK -->|Sim| BALANCE{Saldo suficiente?}
+    
+    BALANCE -->|Não| ERROR5[400 Insufficient Balance]
+    BALANCE -->|Sim| CREATE[Create Withdraw]
+    
+    CREATE --> SCHEDULED{Agendado?}
+    
+    SCHEDULED -->|Sim| SAVE[Save to DB<br/>done=false]
+    SCHEDULED -->|Não| PROCESS[Process Withdraw]
+    
+    SAVE --> EVENT1[Dispatch WithdrawCreated]
+    EVENT1 --> RESP1[201 Created]
+    
+    PROCESS --> DEDUCT[Deduct Balance<br/>Atomic SQL]
+    DEDUCT --> PIX[Process PIX<br/>Strategy]
+    PIX --> MARK[Mark as Done]
+    MARK --> EMAIL[Send Email]
+    EMAIL --> EVENT2[Dispatch WithdrawProcessed]
+    EVENT2 --> AUDIT[Audit Log]
+    AUDIT --> RESP2[201 Created]
+    
+    style START fill:#e1f5ff
+    style ERROR1 fill:#ffe6e6
+    style ERROR2 fill:#ffe6e6
+    style ERROR3 fill:#ffe6e6
+    style ERROR4 fill:#ffe6e6
+    style ERROR5 fill:#ffe6e6
+    style RESP1 fill:#e6ffe6
+    style RESP2 fill:#e6ffe6
+
