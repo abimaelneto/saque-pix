@@ -3,11 +3,12 @@ apiVersion: 1
 providers:
   - name: 'saque-pix-dashboards'
     orgId: 1
-    folder: 'Saque PIX'
+    folder: ''
     type: file
     disableDeletion: false
     editable: true
     allowUiUpdates: true
     options:
       path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false
 

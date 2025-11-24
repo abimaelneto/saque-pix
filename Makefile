@@ -47,9 +47,10 @@ dev: ## Iniciar servidor em modo desenvolvimento com hot reload (usando hyperf/w
 	@echo "🔥 Iniciando modo desenvolvimento com hot reload..."
 	@echo "📝 Usando hyperf/watcher (pacote oficial)"
 	@echo "📁 Monitorando: app/ e config/"
+	@echo "📋 Logs aparecerão no terminal"
 	@echo "🛑 Pressione Ctrl+C para parar"
 	@echo ""
-	@docker-compose exec app bash -c "if [ -f /var/www/runtime/hyperf.pid ]; then PID=\$$(cat /var/www/runtime/hyperf.pid 2>/dev/null); if [ ! -z \"\$$PID\" ] && kill -0 \"\$$PID\" 2>/dev/null; then echo '🛑 Parando processo anterior...'; kill \"\$$PID\" 2>/dev/null; sleep 1; fi; fi; php bin/hyperf.php server:watch"
+	@docker-compose exec -T app bash -c "rm -rf /var/www/runtime/container/* 2>/dev/null || true; if [ -f /var/www/runtime/hyperf.pid ]; then PID=\$$(cat /var/www/runtime/hyperf.pid 2>/dev/null); if [ ! -z \"\$$PID\" ] && kill -0 \"\$$PID\" 2>/dev/null; then echo '🛑 Parando processo anterior...'; kill \"\$$PID\" 2>/dev/null; sleep 1; fi; fi; php bin/hyperf.php server:watch"
 
 dev-legacy: ## Iniciar servidor em modo desenvolvimento com hot reload (script customizado)
 	@echo "🔥 Iniciando modo desenvolvimento com hot reload (legacy)..."
@@ -65,8 +66,9 @@ dev-clean: ## Limpar cache e iniciar em modo desenvolvimento
 
 restart: ## Reiniciar servidor (limpa cache e reinicia)
 	@echo "🔄 Reiniciando servidor..."
-	docker-compose exec app bash -c "rm -rf /var/www/runtime/container/* 2>/dev/null; pkill -f 'hyperf.php start' || true; sleep 1; php bin/hyperf.php start > /dev/null 2>&1 &"
-	@echo "✅ Servidor reiniciado!"
+	@docker-compose exec -T app bash -c "rm -rf /var/www/runtime/container/* 2>/dev/null || true; if [ -f /var/www/runtime/hyperf.pid ]; then PID=\$$(cat /var/www/runtime/hyperf.pid 2>/dev/null); if [ ! -z \"\$$PID\" ] && kill -0 \"\$$PID\" 2>/dev/null; then kill \"\$$PID\" 2>/dev/null; sleep 1; fi; fi; php bin/hyperf.php start > /dev/null 2>&1 &"
+	@sleep 3
+	@echo "✅ Servidor reiniciado (cache limpo)"
 
 test: ## Executar todos os testes
 	docker-compose exec app composer test
@@ -89,3 +91,21 @@ logs: ## Ver logs dos containers
 clear-cache: ## Limpar cache do Hyperf
 	docker-compose exec app rm -rf /var/www/runtime/container/* 2>/dev/null || true
 	@echo "✅ Cache limpo!"
+
+stress-test: ## Executar stress testing básico
+	@echo "🔥 Iniciando stress testing..."
+	@echo "📝 Certifique-se de que o servidor está rodando (make start-bg)"
+	@echo ""
+	@bash scripts/stress-test.sh
+
+load-test: ## Gerar carga de 1000 req/s por 5 segundos (load test intensivo)
+	@echo "🔥 Iniciando Load Test - 1000 req/s por 5 segundos..."
+	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
+	@echo ""
+	@docker-compose exec -T app php scripts/load-test.php $(ARGS)
+
+load-test-continuous: ## Gerar carga contínua para visualizar no Grafana (1 req/s)
+	@echo "🔥 Gerando carga contínua (1 req/s)..."
+	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
+	@echo ""
+	@bash scripts/generate-load.sh
