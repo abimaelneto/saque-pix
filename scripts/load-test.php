@@ -143,7 +143,7 @@ function createRequestHandle($url, $authToken, $accountId, $requestData)
 }
 
 // Função para processar requisições concluídas
-function processCompletedRequests($multiHandle, &$stats): int
+function processCompletedRequests($multiHandle, &$stats, &$activeHandles): int
 {
     $processed = 0;
     
@@ -170,6 +170,13 @@ function processCompletedRequests($multiHandle, &$stats): int
             
             curl_multi_remove_handle($multiHandle, $ch);
             curl_close($ch);
+            
+            // Remover do array de handles ativos
+            $key = array_search($ch, $activeHandles, true);
+            if ($key !== false) {
+                unset($activeHandles[$key]);
+            }
+            
             $processed++;
         }
     }
@@ -220,18 +227,11 @@ while (true) {
     $stillRunning = 0;
     curl_multi_exec($multiHandle, $stillRunning);
     
-    // Processar requisições concluídas
-    $completed = processCompletedRequests($multiHandle, $stats);
+    // Processar requisições concluídas (a função já remove do array)
+    $completed = processCompletedRequests($multiHandle, $stats, $activeHandles);
     
-    // Remover handles concluídos do array de ativos
+    // Reindexar array após remoções
     if ($completed > 0) {
-        $activeHandles = array_filter($activeHandles, function($handle) use ($multiHandle) {
-            // Verificar se o handle ainda está no multi handle
-            // Se não estiver, foi removido (concluído)
-            $info = curl_getinfo($handle);
-            return $info !== false;
-        });
-        // Reindexar array
         $activeHandles = array_values($activeHandles);
     }
     
@@ -273,13 +273,9 @@ $waitStart = microtime(true);
 while (count($activeHandles) > 0 && (microtime(true) - $waitStart) < $maxWaitTime) {
     $stillRunning = 0;
     curl_multi_exec($multiHandle, $stillRunning);
-    processCompletedRequests($multiHandle, $stats);
+    processCompletedRequests($multiHandle, $stats, $activeHandles);
     
-    // Remover handles concluídos
-    $activeHandles = array_filter($activeHandles, function($handle) {
-        $info = curl_getinfo($handle);
-        return $info !== false;
-    });
+    // Reindexar array após remoções
     $activeHandles = array_values($activeHandles);
     
     if (count($activeHandles) > 0) {
