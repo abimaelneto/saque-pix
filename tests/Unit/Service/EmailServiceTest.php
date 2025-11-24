@@ -7,6 +7,7 @@ namespace Tests\Unit\Service;
 use App\Model\AccountWithdraw;
 use App\Model\AccountWithdrawPix;
 use App\Service\EmailService;
+use App\Service\MetricsService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -15,13 +16,15 @@ class EmailServiceTest extends TestCase
 {
     private EmailService $service;
     private MockObject $logger;
+    private MockObject $metricsService;
 
     protected function setUp(): void
     {
         parent::setUp();
         
         $this->logger = $this->createMock(LoggerInterface::class);
-        $this->service = new EmailService($this->logger);
+        $this->metricsService = $this->createMock(MetricsService::class);
+        $this->service = new EmailService($this->logger, $this->metricsService);
     }
 
     public function testSendWithdrawNotificationReturnsFalseWhenPixNotFound(): void

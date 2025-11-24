@@ -8,9 +8,15 @@ use App\DTO\WithdrawRequestDTO;
 use App\Model\Account;
 use App\Model\AccountWithdraw;
 use App\Model\AccountWithdrawPix;
+use App\Factory\WithdrawMethodStrategyFactory;
 use App\Repository\AccountRepository;
 use App\Repository\AccountWithdrawRepository;
+use App\Service\AuditService;
+use App\Service\DistributedLockService;
 use App\Service\EmailService;
+use App\Service\EventDispatcherService;
+use App\Service\FraudDetectionService;
+use App\Service\MetricsService;
 use App\Service\WithdrawService;
 use Hyperf\DbConnection\Db;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -24,6 +30,12 @@ class WithdrawServiceTest extends TestCase
     private MockObject $withdrawRepository;
     private MockObject $emailService;
     private MockObject $logger;
+    private MockObject $lockService;
+    private MockObject $metricsService;
+    private MockObject $fraudDetectionService;
+    private MockObject $auditService;
+    private MockObject $strategyFactory;
+    private MockObject $eventDispatcher;
 
     protected function setUp(): void
     {
@@ -33,27 +45,25 @@ class WithdrawServiceTest extends TestCase
         $this->withdrawRepository = $this->createMock(AccountWithdrawRepository::class);
         $this->emailService = $this->createMock(EmailService::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->lockService = $this->createMock(DistributedLockService::class);
+        $this->metricsService = $this->createMock(MetricsService::class);
+        $this->fraudDetectionService = $this->createMock(FraudDetectionService::class);
+        $this->auditService = $this->createMock(AuditService::class);
+        $this->strategyFactory = $this->createMock(WithdrawMethodStrategyFactory::class);
+        $this->eventDispatcher = $this->createMock(EventDispatcherService::class);
 
-        $this->service = new WithdrawService();
-        
-        // Usar reflection para injetar dependências mockadas
-        $reflection = new \ReflectionClass($this->service);
-        
-        $accountRepoProp = $reflection->getProperty('accountRepository');
-        $accountRepoProp->setAccessible(true);
-        $accountRepoProp->setValue($this->service, $this->accountRepository);
-
-        $withdrawRepoProp = $reflection->getProperty('withdrawRepository');
-        $withdrawRepoProp->setAccessible(true);
-        $withdrawRepoProp->setValue($this->service, $this->withdrawRepository);
-
-        $emailServiceProp = $reflection->getProperty('emailService');
-        $emailServiceProp->setAccessible(true);
-        $emailServiceProp->setValue($this->service, $this->emailService);
-
-        $loggerProp = $reflection->getProperty('logger');
-        $loggerProp->setAccessible(true);
-        $loggerProp->setValue($this->service, $this->logger);
+        $this->service = new WithdrawService(
+            $this->accountRepository,
+            $this->withdrawRepository,
+            $this->emailService,
+            $this->logger,
+            $this->lockService,
+            $this->metricsService,
+            $this->fraudDetectionService,
+            $this->auditService,
+            $this->strategyFactory,
+            $this->eventDispatcher
+        );
     }
 
     public function testCreateWithdrawThrowsExceptionWhenAccountNotFound(): void
