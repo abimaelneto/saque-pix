@@ -19,10 +19,6 @@ class AuthMiddleware implements MiddlewareInterface
 {
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (env('APP_ENV') === 'testing') {
-            return $handler->handle($request);
-        }
-
         // Rotas públicas que não precisam de autenticação
         $path = $request->getUri()->getPath();
         $publicPaths = ['/health', '/metrics', '/metrics/json', '/admin', '/accounts'];
