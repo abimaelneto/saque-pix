@@ -33,11 +33,16 @@ mysql_data/
 
 # Testing
 .phpunit.result.cache
+.phpunit.cache/
 coverage/
 
 # Build
 build/
 dist/
+
+# Backup files
+*.bak
+*.bak2
 
 *.md
 *.txt
