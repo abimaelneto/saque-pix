@@ -7,13 +7,11 @@ namespace App\Controller;
 use App\Service\MetricsService;
 use Hyperf\DbConnection\Db;
 use Hyperf\HttpMessage\Stream\SwooleStream;
-use Hyperf\HttpServer\Annotation\Controller;
-use Hyperf\HttpServer\Annotation\GetMapping;
 use Hyperf\HttpServer\Contract\ResponseInterface;
 use Hyperf\Redis\Redis;
 use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
 
-#[Controller]
+// Rotas definidas em config/routes.php
 class HealthController
 {
     public function __construct(
@@ -23,7 +21,6 @@ class HealthController
     ) {
     }
 
-    #[GetMapping(path: '/health')]
     public function health(): PsrResponseInterface
     {
         $checks = [
@@ -55,7 +52,6 @@ class HealthController
         return $this->response->json($checks)->withStatus($statusCode);
     }
 
-    #[GetMapping(path: '/metrics')]
     public function metrics(): PsrResponseInterface
     {
         $metrics = $this->metricsService->getAllMetrics();
@@ -90,7 +86,6 @@ class HealthController
             ->withBody(new SwooleStream(implode("\n", $prometheusFormat) . "\n"));
     }
 
-    #[GetMapping(path: '/metrics/json')]
     public function metricsJson(): PsrResponseInterface
     {
         $metrics = $this->metricsService->getAllMetrics();

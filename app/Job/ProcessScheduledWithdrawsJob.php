@@ -11,7 +11,7 @@ use Hyperf\AsyncQueue\Job;
  * Job assíncrono para processar saques agendados
  * 
  * Permite processamento assíncrono via queue system
- * Compatível com serverless (SQS, etc.)
+ * Nota: Para implementações serverless, ver docs_ia/serverless-reference
  */
 class ProcessScheduledWithdrawsJob extends Job
 {

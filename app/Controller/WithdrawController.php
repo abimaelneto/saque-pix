@@ -7,8 +7,6 @@ namespace App\Controller;
 use App\DTO\WithdrawRequestDTO;
 use App\Service\AuditService;
 use App\Service\WithdrawService;
-use Hyperf\HttpServer\Annotation\Controller;
-use Hyperf\HttpServer\Annotation\PostMapping;
 use Hyperf\HttpServer\Contract\RequestInterface;
 use Hyperf\HttpServer\Contract\ResponseInterface;
 use Hyperf\Validation\Annotation\Validation;
@@ -16,7 +14,7 @@ use Hyperf\Validation\Contract\ValidatorFactoryInterface;
 use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-#[Controller(prefix: '/account')]
+// Rotas definidas em config/routes.php
 class WithdrawController
 {
     public function __construct(
@@ -26,7 +24,6 @@ class WithdrawController
     ) {
     }
 
-    #[PostMapping(path: '/{accountId}/balance/withdraw')]
     public function withdraw(
         string $accountId,
         ServerRequestInterface $request,
@@ -44,17 +41,25 @@ class WithdrawController
             );
             
             return $response->json([
+                'success' => false,
                 'error' => 'Forbidden',
                 'message' => 'You do not have permission to access this account',
             ])->withStatus(403);
         }
 
         $data = $request->getParsedBody() ?? [];
+        
+        // Obter idempotency key do header (padrão: Idempotency-Key)
+        $idempotencyKey = $request->getHeaderLine('Idempotency-Key') 
+            ?: $request->getHeaderLine('X-Idempotency-Key')
+            ?: null;
 
         // Validar UUID da conta
         if (!\Ramsey\Uuid\Uuid::isValid($accountId)) {
             return $response->json([
+                'success' => false,
                 'error' => 'Invalid account ID format',
+                'message' => 'Account ID must be a valid UUID',
             ])->withStatus(400);
         }
 
@@ -62,8 +67,10 @@ class WithdrawController
         $maxAmount = 50000.00; // R$ 50.000,00 por saque
         if (isset($data['amount']) && (float) $data['amount'] > $maxAmount) {
             return $response->json([
+                'success' => false,
                 'error' => 'Validation failed',
-                'messages' => ["Amount cannot exceed R$ " . number_format($maxAmount, 2, ',', '.')],
+                'message' => 'Amount exceeds maximum allowed',
+                'errors' => ["Amount cannot exceed R$ " . number_format($maxAmount, 2, ',', '.')],
             ])->withStatus(422);
         }
 
@@ -78,8 +85,10 @@ class WithdrawController
 
         if ($validator->fails()) {
             return $response->json([
+                'success' => false,
                 'error' => 'Validation failed',
-                'messages' => $validator->errors()->all(),
+                'message' => 'Invalid input data',
+                'errors' => $validator->errors()->all(),
             ])->withStatus(422);
         }
 
@@ -115,7 +124,7 @@ class WithdrawController
                 $userId
             );
 
-            $withdraw = $this->withdrawService->createWithdraw($dto, $userId);
+            $withdraw = $this->withdrawService->createWithdraw($dto, $userId, $idempotencyKey);
 
             return $response->json([
                 'success' => true,
@@ -133,13 +142,52 @@ class WithdrawController
                 ],
             ])->withStatus(201);
         } catch (\InvalidArgumentException $e) {
-            // Não expor detalhes internos em produção
-            $message = env('APP_ENV') === 'production' 
-                ? 'Invalid request' 
-                : $e->getMessage();
+            // Log do erro
+            $logger = \Hyperf\Context\ApplicationContext::getContainer()
+                ->get(\Psr\Log\LoggerInterface::class);
+            $logger->warning('Invalid argument in withdraw', [
+                'account_id' => $accountId,
+                'error' => $e->getMessage(),
+            ]);
+            
+            // Verificar se é "Account not found" para retornar 404
+            if (stripos($e->getMessage(), 'account not found') !== false) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Account not found',
+                    'message' => "Account with ID '{$accountId}' does not exist",
+                ])->withStatus(404);
+            }
+            
+            // Verificar se é "Insufficient balance" para retornar 400
+            if (stripos($e->getMessage(), 'insufficient balance') !== false) {
+                return $response->json([
+                    'success' => false,
+                    'error' => 'Insufficient balance',
+                    'message' => 'Account does not have sufficient balance for this withdrawal',
+                ])->withStatus(400);
+            }
                 
             return $response->json([
-                'error' => $message,
+                'success' => false,
+                'error' => 'Invalid request',
+                'message' => env('APP_ENV') === 'production' 
+                    ? 'Invalid request parameters' 
+                    : $e->getMessage(),
+            ])->withStatus(400);
+        } catch (\RuntimeException $e) {
+            // Log do erro
+            \Hyperf\Context\ApplicationContext::getContainer()
+                ->get(\Psr\Log\LoggerInterface::class)
+                ->warning('Runtime error in withdraw', [
+                    'account_id' => $accountId,
+                    'error' => $e->getMessage(),
+                ]);
+
+            return $response->json([
+                'success' => false,
+                'error' => 'Request failed',
+                'message' => $e->getMessage(),
             ])->withStatus(400);
         } catch (\Exception $e) {
             // Log do erro completo, mas não expor ao cliente
@@ -152,7 +200,11 @@ class WithdrawController
                 ]);
 
             return $response->json([
+                'success' => false,
                 'error' => 'Internal server error',
+                'message' => env('APP_ENV') === 'production' 
+                    ? 'An unexpected error occurred' 
+                    : $e->getMessage(),
             ])->withStatus(500);
         }
     }
