@@ -75,6 +75,21 @@ class AccountWithdrawRepository
     }
 
     /**
+     * Marca saque como cancelado (não processado, apenas cancelado)
+     */
+    public function markAsCancelled(string $id, string $reason): bool
+    {
+        $data = [
+            'error' => true,
+            'error_reason' => $reason,
+            // Não marca done=true para cancelamentos
+            // Não marca processed_at para cancelamentos
+        ];
+
+        return AccountWithdraw::where('id', $id)->update($data) > 0;
+    }
+
+    /**
      * Encontra saques recentes de uma conta
      */
     public function findRecentByAccount(string $accountId, \DateTime $since): array

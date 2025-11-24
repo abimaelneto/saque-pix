@@ -200,6 +200,21 @@ class WithdrawService
             // Disparar evento de criação
             $this->eventDispatcher->dispatch(new WithdrawCreated($withdraw, $dto->isScheduled()));
 
+            // Enviar notificação de agendamento se for saque agendado
+            if ($dto->isScheduled()) {
+                try {
+                    $this->emailService->sendScheduledWithdrawNotification($withdraw);
+                } catch (\Exception $e) {
+                    // Log erro mas não falha a criação do saque
+                    $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
+                    $this->logger->warning('Failed to send scheduled withdraw notification', [
+                        'correlation_id' => $correlationId,
+                        'withdraw_id' => $withdrawId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             // Processar imediatamente se não for agendado
             // Usar lock distribuído por conta para prevenir processamento duplicado
             if (!$dto->isScheduled()) {
@@ -228,6 +243,79 @@ class WithdrawService
             ]);
 
             return $withdraw;
+        });
+    }
+
+    /**
+     * Cancela um saque agendado
+     * Apenas saques agendados e não processados podem ser cancelados
+     */
+    public function cancelScheduledWithdraw(string $withdrawId, ?string $userId = null): bool
+    {
+        return Db::transaction(function () use ($withdrawId, $userId) {
+            // Buscar saque com lock pessimista
+            $withdraw = $this->withdrawRepository->findByIdWithLock($withdrawId);
+            
+            if (!$withdraw) {
+                throw new \InvalidArgumentException('Withdraw not found');
+            }
+
+            // Validar que é saque agendado
+            if (!$withdraw->scheduled) {
+                throw new \InvalidArgumentException('Only scheduled withdraws can be cancelled');
+            }
+
+            // Validar que não foi processado
+            if ($withdraw->done) {
+                throw new \InvalidArgumentException('Cannot cancel already processed withdraw');
+            }
+
+            // Validar que não está com erro
+            if ($withdraw->error) {
+                throw new \InvalidArgumentException('Cannot cancel withdraw with error status');
+            }
+
+            // Marcar como cancelado (usando error=true e error_reason para indicar cancelamento)
+            // Nota: Não marcamos done=true para cancelamentos, apenas error=true
+            $this->withdrawRepository->markAsCancelled($withdrawId, 'Cancelled by user');
+
+            // Recarregar withdraw com relacionamentos
+            $withdraw = $this->withdrawRepository->findById($withdrawId);
+
+            // Enviar email de cancelamento
+            try {
+                $this->emailService->sendWithdrawCancellationNotification($withdraw);
+            } catch (\Exception $e) {
+                // Log erro mas não falha o cancelamento
+                $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+                $this->logger->warning('Failed to send cancellation notification', [
+                    'correlation_id' => $correlationId,
+                    'withdraw_id' => $withdrawId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Registrar métricas
+            $this->metricsService->incrementCounter('withdraws_cancelled_total', [
+                'account_id' => $withdraw->account_id,
+            ]);
+
+            // Auditoria
+            $this->auditService->logWithdrawCancelled(
+                $withdrawId,
+                $withdraw->account_id,
+                $userId
+            );
+
+            $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+            $this->logger->info('Scheduled withdraw cancelled', [
+                'correlation_id' => $correlationId,
+                'withdraw_id' => $withdrawId,
+                'account_id' => $withdraw->account_id,
+                'user_id' => $userId,
+            ]);
+
+            return true;
         });
     }
 
@@ -472,6 +560,14 @@ class WithdrawService
         }
         
         return $result;
+    }
+
+    /**
+     * Busca saque por ID (método auxiliar para controllers)
+     */
+    public function getWithdrawById(string $withdrawId): ?AccountWithdraw
+    {
+        return $this->withdrawRepository->findById($withdrawId);
     }
 }
 

@@ -101,6 +101,24 @@ class AuditService
     }
 
     /**
+     * Registra cancelamento de saque agendado
+     */
+    public function logWithdrawCancelled(
+        string $withdrawId,
+        string $accountId,
+        ?string $userId = null
+    ): void {
+        $this->log(
+            'withdraw_cancelled',
+            'withdraw',
+            $withdrawId,
+            $userId,
+            $accountId,
+            []
+        );
+    }
+
+    /**
      * Registra tentativa de acesso não autorizado
      */
     public function logUnauthorizedAccess(

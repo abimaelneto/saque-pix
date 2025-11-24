@@ -17,6 +17,168 @@ class EmailService
     ) {
     }
 
+    /**
+     * Envia notificação de saque agendado (quando criado)
+     */
+    public function sendScheduledWithdrawNotification(AccountWithdraw $withdraw): bool
+    {
+        try {
+            $pix = $withdraw->pix;
+            
+            if (!$pix) {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+                $this->logger->error('PIX data not found for scheduled withdraw', [
+                    'correlation_id' => $correlationId,
+                    'withdraw_id' => $withdraw->id,
+                ]);
+                return false;
+            }
+
+            $scheduledFor = $withdraw->scheduled_for;
+            if ($scheduledFor instanceof \DateTime) {
+                $dateTime = $scheduledFor->format('d/m/Y H:i');
+            } elseif (is_string($scheduledFor)) {
+                $dateTime = $scheduledFor;
+            } else {
+                $dateTime = 'Data não informada';
+            }
+
+            $subject = 'Saque PIX Agendado';
+            $body = $this->buildScheduledEmailBody($withdraw, $pix, $dateTime);
+
+            // Em ambiente de testes, não tentar enviar emails reais
+            if (env('APP_ENV') === 'testing') {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+                $this->logger->info('Scheduled email send skipped in testing environment', [
+                    'correlation_id' => $correlationId,
+                    'withdraw_id' => $withdraw->id,
+                    'email' => $pix->key,
+                ]);
+                return true;
+            }
+
+            $mailHost = env('MAIL_HOST', 'mailhog');
+            $mailPort = (int) env('MAIL_PORT', 1025);
+            $fromAddress = env('MAIL_FROM_ADDRESS', 'noreply@saque-pix.local');
+            $fromName = env('MAIL_FROM_NAME', 'Saque PIX');
+            
+            $sent = $this->retryService->executeWithRetry(
+                function () use ($pix, $subject, $body, $mailHost, $mailPort, $fromAddress, $fromName) {
+                    return $this->sendViaSMTP(
+                        $mailHost,
+                        $mailPort,
+                        $fromAddress,
+                        $fromName,
+                        $pix->key,
+                        $subject,
+                        $body
+                    );
+                },
+                maxRetries: 3,
+                initialDelayMs: 1000
+            );
+
+            $this->metricsService->recordEmailSent($sent);
+            
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+            $this->logger->info('Scheduled withdraw notification email sent', [
+                'correlation_id' => $correlationId,
+                'withdraw_id' => $withdraw->id,
+                'email' => $pix->key,
+                'sent' => $sent,
+            ]);
+
+            return $sent;
+        } catch (\Exception $e) {
+            $this->metricsService->recordEmailSent(false);
+            
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+            $this->logger->error('Failed to send scheduled withdraw notification email', [
+                'correlation_id' => $correlationId,
+                'withdraw_id' => $withdraw->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Envia notificação de cancelamento de saque agendado
+     */
+    public function sendWithdrawCancellationNotification(AccountWithdraw $withdraw): bool
+    {
+        try {
+            $pix = $withdraw->pix;
+            
+            if (!$pix) {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+                $this->logger->error('PIX data not found for cancelled withdraw', [
+                    'correlation_id' => $correlationId,
+                    'withdraw_id' => $withdraw->id,
+                ]);
+                return false;
+            }
+
+            $subject = 'Saque PIX Cancelado';
+            $body = $this->buildCancellationEmailBody($withdraw, $pix);
+
+            if (env('APP_ENV') === 'testing') {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+                $this->logger->info('Cancellation email send skipped in testing environment', [
+                    'correlation_id' => $correlationId,
+                    'withdraw_id' => $withdraw->id,
+                    'email' => $pix->key,
+                ]);
+                return true;
+            }
+
+            $mailHost = env('MAIL_HOST', 'mailhog');
+            $mailPort = (int) env('MAIL_PORT', 1025);
+            $fromAddress = env('MAIL_FROM_ADDRESS', 'noreply@saque-pix.local');
+            $fromName = env('MAIL_FROM_NAME', 'Saque PIX');
+            
+            $sent = $this->retryService->executeWithRetry(
+                function () use ($pix, $subject, $body, $mailHost, $mailPort, $fromAddress, $fromName) {
+                    return $this->sendViaSMTP(
+                        $mailHost,
+                        $mailPort,
+                        $fromAddress,
+                        $fromName,
+                        $pix->key,
+                        $subject,
+                        $body
+                    );
+                },
+                maxRetries: 3,
+                initialDelayMs: 1000
+            );
+
+            $this->metricsService->recordEmailSent($sent);
+            
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+            $this->logger->info('Withdraw cancellation notification email sent', [
+                'correlation_id' => $correlationId,
+                'withdraw_id' => $withdraw->id,
+                'email' => $pix->key,
+                'sent' => $sent,
+            ]);
+
+            return $sent;
+        } catch (\Exception $e) {
+            $this->metricsService->recordEmailSent(false);
+            
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
+            $this->logger->error('Failed to send withdraw cancellation notification email', [
+                'correlation_id' => $correlationId,
+                'withdraw_id' => $withdraw->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     public function sendWithdrawNotification(AccountWithdraw $withdraw): bool
     {
         try {
@@ -118,6 +280,43 @@ class EmailService
             <p><strong>Valor Sacado:</strong> R$ {$amount}</p>
             <p><strong>Tipo de Chave PIX:</strong> {$pix->type}</p>
             <p><strong>Chave PIX:</strong> {$pix->key}</p>
+        </body>
+        </html>
+        ";
+    }
+
+    private function buildScheduledEmailBody(AccountWithdraw $withdraw, $pix, string $scheduledFor): string
+    {
+        $amount = number_format((float) $withdraw->amount, 2, ',', '.');
+
+        return "
+        <html>
+        <body>
+            <h2>Saque PIX Agendado</h2>
+            <p>Seu saque PIX foi agendado com sucesso!</p>
+            <p><strong>Valor a ser sacado:</strong> R$ {$amount}</p>
+            <p><strong>Agendado para:</strong> {$scheduledFor}</p>
+            <p><strong>Tipo de Chave PIX:</strong> {$pix->type}</p>
+            <p><strong>Chave PIX:</strong> {$pix->key}</p>
+            <p><em>Você receberá uma nova notificação quando o saque for processado.</em></p>
+        </body>
+        </html>
+        ";
+    }
+
+    private function buildCancellationEmailBody(AccountWithdraw $withdraw, $pix): string
+    {
+        $amount = number_format((float) $withdraw->amount, 2, ',', '.');
+
+        return "
+        <html>
+        <body>
+            <h2>Saque PIX Cancelado</h2>
+            <p>Informamos que seu saque PIX agendado foi cancelado.</p>
+            <p><strong>Valor do saque:</strong> R$ {$amount}</p>
+            <p><strong>Tipo de Chave PIX:</strong> {$pix->type}</p>
+            <p><strong>Chave PIX:</strong> {$pix->key}</p>
+            <p><em>O valor não foi debitado da sua conta.</em></p>
         </body>
         </html>
         ";
