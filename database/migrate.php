@@ -2,13 +2,16 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../vendor/autoload.php';
+! defined('BASE_PATH') && define('BASE_PATH', dirname(__DIR__, 1));
+
+require BASE_PATH . '/vendor/autoload.php';
+require BASE_PATH . '/helper.php';
 
 use Hyperf\Database\Migrations\Migrator;
 use Hyperf\Database\ConnectionResolverInterface;
 use Hyperf\Context\ApplicationContext;
 
-$container = require __DIR__ . '/../config/container.php';
+$container = require BASE_PATH . '/config/container.php';
 
 $resolver = ApplicationContext::getContainer()->get(ConnectionResolverInterface::class);
 $migrator = new Migrator($resolver);
