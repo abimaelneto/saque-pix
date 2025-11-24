@@ -19,6 +19,29 @@ class AccountWithdrawRepository
         return AccountWithdraw::with(['account', 'pix'])->find($id);
     }
 
+    /**
+     * Busca saque por idempotency key
+     * Garante idempotência: mesma requisição retorna mesmo resultado
+     */
+    public function findByIdempotencyKey(string $idempotencyKey): ?AccountWithdraw
+    {
+        return AccountWithdraw::with(['account', 'pix'])
+            ->where('idempotency_key', $idempotencyKey)
+            ->first();
+    }
+
+    /**
+     * Busca saque com lock pessimista (SELECT FOR UPDATE)
+     * Previne race conditions em sistemas distribuídos
+     */
+    public function findByIdWithLock(string $id): ?AccountWithdraw
+    {
+        return AccountWithdraw::with(['account', 'pix'])
+            ->where('id', $id)
+            ->lockForUpdate()
+            ->first();
+    }
+
     public function findPendingScheduled(): \Hyperf\Database\Model\Collection
     {
         return AccountWithdraw::where('scheduled', true)

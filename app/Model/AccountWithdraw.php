@@ -8,6 +8,8 @@ use Hyperf\DbConnection\Model\Model;
 
 /**
  * @property string $id
+ * @property ?string $idempotency_key
+ * @property ?string $correlation_id
  * @property string $account_id
  * @property string $method
  * @property string $amount
@@ -32,6 +34,8 @@ class AccountWithdraw extends Model
 
     protected array $fillable = [
         'id',
+        'idempotency_key',
+        'correlation_id',
         'account_id',
         'method',
         'amount',
@@ -45,6 +49,8 @@ class AccountWithdraw extends Model
 
     protected array $casts = [
         'id' => 'string',
+        'idempotency_key' => 'string',
+        'correlation_id' => 'string',
         'account_id' => 'string',
         'method' => 'string',
         'amount' => 'decimal:2',

@@ -18,6 +18,7 @@ use App\Service\AuditService;
 use App\Service\DistributedLockService;
 use App\Service\EventDispatcherService;
 use App\Service\FraudDetectionService;
+use Hyperf\Context\Context;
 use Hyperf\Coroutine\Coroutine;
 use Hyperf\Coroutine\Parallel;
 use Hyperf\DbConnection\Db;
@@ -40,11 +41,25 @@ class WithdrawService
     ) {
     }
 
-    public function createWithdraw(WithdrawRequestDTO $dto, ?string $userId = null): AccountWithdraw
+    public function createWithdraw(WithdrawRequestDTO $dto, ?string $userId = null, ?string $idempotencyKey = null): AccountWithdraw
     {
         $startTime = microtime(true);
         
-        return Db::transaction(function () use ($dto, $startTime, $userId) {
+        // Verificar idempotência se key fornecida
+        if ($idempotencyKey) {
+            $existing = $this->withdrawRepository->findByIdempotencyKey($idempotencyKey);
+            if ($existing) {
+                $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
+                $this->logger->info('Idempotent request: returning existing withdraw', [
+                    'correlation_id' => $correlationId,
+                    'idempotency_key' => $idempotencyKey,
+                    'withdraw_id' => $existing->id,
+                ]);
+                return $existing;
+            }
+        }
+        
+        return Db::transaction(function () use ($dto, $startTime, $userId, $idempotencyKey) {
             // Validar conta existe
             $account = $this->accountRepository->findById($dto->accountId);
             if (!$account) {
@@ -56,14 +71,35 @@ class WithdrawService
             }
 
             // Validar saldo suficiente (se não for agendado)
+            // Usar lock distribuído por conta para prevenir race conditions
             if (!$dto->isScheduled()) {
-                if (!$this->accountRepository->hasSufficientBalance($dto->accountId, $dto->amount)) {
-                    $this->metricsService->recordInsufficientBalance('withdraw_creation');
-                    $this->metricsService->incrementCounter('withdraws_created_total', [
-                        'status' => 'error',
-                        'error_type' => 'insufficient_balance',
+                $accountLockKey = "account:withdraw:{$dto->accountId}";
+                
+                $result = $this->lockService->executeWithLock(
+                    $accountLockKey,
+                    function () use ($dto) {
+                        // Verificar saldo com lock pessimista dentro da transação
+                        if (!$this->accountRepository->hasSufficientBalanceWithLock($dto->accountId, $dto->amount)) {
+                            $this->metricsService->recordInsufficientBalance('withdraw_creation');
+                            $this->metricsService->incrementCounter('withdraws_created_total', [
+                                'status' => 'error',
+                                'error_type' => 'insufficient_balance',
+                            ]);
+                            throw new \InvalidArgumentException('Insufficient balance');
+                        }
+                        return true;
+                    },
+                    10 // 10 segundos de lock (suficiente para criar saque)
+                );
+                
+                if ($result === null) {
+                    // Lock não adquirido - outra operação está em andamento
+                    $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
+                    $this->logger->warning('Could not acquire lock for account withdraw', [
+                        'correlation_id' => $correlationId,
+                        'account_id' => $dto->accountId,
                     ]);
-                    throw new \InvalidArgumentException('Insufficient balance');
+                    throw new \RuntimeException('Account is being processed by another request. Please try again.');
                 }
             }
 
@@ -114,17 +150,24 @@ class WithdrawService
                 }
                 
                 // Apenas logar se for médio (pode ser falso positivo)
+                $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
                 $this->logger->warning('Fraud check triggered but allowing transaction', [
+                    'correlation_id' => $correlationId,
                     'account_id' => $dto->accountId,
                     'checks' => $fraudCheck->checks,
                     'severity' => $severity,
                 ]);
             }
 
+            // Obter correlation_id do contexto (adicionado pelo CorrelationIdMiddleware)
+            $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
+
             // Criar saque
             $withdrawId = Uuid::uuid4()->toString();
             $withdraw = $this->withdrawRepository->create([
                 'id' => $withdrawId,
+                'idempotency_key' => $idempotencyKey, // Garante idempotência
+                'correlation_id' => $correlationId, // Rastreamento distribuído
                 'account_id' => $dto->accountId,
                 'method' => $dto->method,
                 'amount' => $dto->amount,
@@ -158,13 +201,25 @@ class WithdrawService
             $this->eventDispatcher->dispatch(new WithdrawCreated($withdraw, $dto->isScheduled()));
 
             // Processar imediatamente se não for agendado
+            // Usar lock distribuído por conta para prevenir processamento duplicado
             if (!$dto->isScheduled()) {
-                $processStartTime = microtime(true);
-                $processed = $this->processWithdraw($withdrawId);
-                $processDuration = microtime(true) - $processStartTime;
+                $accountLockKey = "account:withdraw:{$dto->accountId}";
                 
-                $this->metricsService->recordWithdrawProcessingTime($processDuration, false);
-                $this->metricsService->recordWithdrawProcessed($processed);
+                $this->lockService->executeWithLock(
+                    $accountLockKey,
+                    function () use ($withdrawId, &$processDuration, &$processed) {
+                        $processStartTime = microtime(true);
+                        $processed = $this->processWithdraw($withdrawId);
+                        $processDuration = microtime(true) - $processStartTime;
+                        return $processed;
+                    },
+                    30 // 30 segundos de lock (suficiente para processar)
+                );
+                
+                if (isset($processed)) {
+                    $this->metricsService->recordWithdrawProcessingTime($processDuration, false);
+                    $this->metricsService->recordWithdrawProcessed($processed);
+                }
             }
 
             $totalDuration = microtime(true) - $startTime;
@@ -180,111 +235,128 @@ class WithdrawService
     {
         $startTime = microtime(true);
         
-        return Db::transaction(function () use ($withdrawId, $startTime) {
-            $withdraw = $this->withdrawRepository->findById($withdrawId);
-            
-            if (!$withdraw) {
-                $this->metricsService->recordWithdrawProcessed(false, 'withdraw_not_found');
-                throw new \InvalidArgumentException('Withdraw not found');
-            }
+        // Usar distributed lock por saque para prevenir processamento duplicado
+        // em sistemas distribuídos (múltiplas instâncias)
+        $withdrawLockKey = "withdraw:process:{$withdrawId}";
+        
+        return $this->lockService->executeWithLock(
+            $withdrawLockKey,
+            function () use ($withdrawId, $startTime) {
+                return Db::transaction(function () use ($withdrawId, $startTime) {
+                    // Buscar saque com lock pessimista para prevenir race conditions
+                    $withdraw = $this->withdrawRepository->findByIdWithLock($withdrawId);
+                    
+                    if (!$withdraw) {
+                        $this->metricsService->recordWithdrawProcessed(false, 'withdraw_not_found');
+                        throw new \InvalidArgumentException('Withdraw not found');
+                    }
 
-            if ($withdraw->done) {
-                $this->logger->warning('Withdraw already processed', [
-                    'withdraw_id' => $withdrawId,
-                ]);
-                $this->metricsService->recordWithdrawProcessed(false, 'already_processed');
-                return false;
-            }
+                    // Verificar se já foi processado (double-check após lock)
+                    if ($withdraw->done) {
+                        $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+                        $this->logger->warning('Withdraw already processed', [
+                            'correlation_id' => $correlationId,
+                            'withdraw_id' => $withdrawId,
+                        ]);
+                        $this->metricsService->recordWithdrawProcessed(false, 'already_processed');
+                        return false;
+                    }
 
-            // Verificar saldo
-            if (!$this->accountRepository->hasSufficientBalance($withdraw->account_id, $withdraw->amount)) {
-                $this->withdrawRepository->markAsError(
-                    $withdrawId,
-                    'Insufficient balance at processing time'
-                );
+                    // Verificar e deduzir saldo de forma atômica
+                    // Isso previne race conditions entre verificação e dedução
+                    if (!$this->accountRepository->decrementBalanceIfSufficient($withdraw->account_id, $withdraw->amount)) {
+                        $this->withdrawRepository->markAsError(
+                            $withdrawId,
+                            'Insufficient balance at processing time'
+                        );
 
-                $this->logger->warning('Insufficient balance for scheduled withdraw', [
-                    'withdraw_id' => $withdrawId,
-                    'account_id' => $withdraw->account_id,
-                ]);
+                            $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+                            $this->logger->warning('Insufficient balance for scheduled withdraw', [
+                                'correlation_id' => $correlationId,
+                                'withdraw_id' => $withdrawId,
+                                'account_id' => $withdraw->account_id,
+                            ]);
 
-                $this->metricsService->recordInsufficientBalance('withdraw_processing');
-                $this->metricsService->recordWithdrawProcessed(false, 'Insufficient balance at processing time');
-                
-                // Recarregar withdraw e disparar evento de falha
-                $withdraw = $this->withdrawRepository->findById($withdrawId);
-                $this->eventDispatcher->dispatch(new WithdrawFailed(
-                    $withdraw,
-                    'Insufficient balance at processing time'
-                ));
-                
-                return false;
-            }
+                        $this->metricsService->recordInsufficientBalance('withdraw_processing');
+                        $this->metricsService->recordWithdrawProcessed(false, 'Insufficient balance at processing time');
+                        
+                        // Recarregar withdraw e disparar evento de falha
+                        $withdraw = $this->withdrawRepository->findById($withdrawId);
+                        $this->eventDispatcher->dispatch(new WithdrawFailed(
+                            $withdraw,
+                            'Insufficient balance at processing time'
+                        ));
+                        
+                        return false;
+                    }
 
-            // Deduzir saldo
-            $this->accountRepository->updateBalance($withdraw->account_id, $withdraw->amount);
+                    // Saldo foi deduzido com sucesso de forma atômica
+                    // Obter strategy para processar o saque
+                    $strategy = $this->strategyFactory->create($withdraw->method);
+                    
+                    // Processar usando a strategy (integração com provedor PIX, TED, etc.)
+                    $processed = $strategy->process($withdraw);
+                    
+                    if (!$processed) {
+                        // Marcar como erro se a strategy falhou
+                        $this->withdrawRepository->markAsError(
+                            $withdrawId,
+                            'Failed to process withdraw using method strategy'
+                        );
+                        
+                        $duration = microtime(true) - $startTime;
+                        $this->metricsService->recordWithdrawProcessed(false, 'strategy_processing_failed');
+                        
+                        // Recarregar withdraw e disparar evento de falha
+                        $withdraw = $this->withdrawRepository->findById($withdrawId);
+                        $this->eventDispatcher->dispatch(new WithdrawFailed(
+                            $withdraw,
+                            'Failed to process withdraw using method strategy'
+                        ));
+                        
+                        return false;
+                    }
 
-            // Obter strategy para processar o saque
-            $strategy = $this->strategyFactory->create($withdraw->method);
-            
-            // Processar usando a strategy (integração com provedor PIX, TED, etc.)
-            $processed = $strategy->process($withdraw);
-            
-            if (!$processed) {
-                // Marcar como erro se a strategy falhou
-                $this->withdrawRepository->markAsError(
-                    $withdrawId,
-                    'Failed to process withdraw using method strategy'
-                );
-                
-                $duration = microtime(true) - $startTime;
-                $this->metricsService->recordWithdrawProcessed(false, 'strategy_processing_failed');
-                
-                // Recarregar withdraw e disparar evento de falha
-                $withdraw = $this->withdrawRepository->findById($withdrawId);
-                $this->eventDispatcher->dispatch(new WithdrawFailed(
-                    $withdraw,
-                    'Failed to process withdraw using method strategy'
-                ));
-                
-                return false;
-            }
+                    // Marcar como processado
+                    $this->withdrawRepository->markAsDone($withdrawId);
 
-            // Marcar como processado
-            $this->withdrawRepository->markAsDone($withdrawId);
+                    // Recarregar withdraw com relacionamentos
+                    $withdraw = $this->withdrawRepository->findById($withdrawId);
 
-            // Recarregar withdraw com relacionamentos
-            $withdraw = $this->withdrawRepository->findById($withdrawId);
+                    // Enviar email
+                    $emailSent = $this->emailService->sendWithdrawNotification($withdraw);
+                    $this->metricsService->recordEmailSent($emailSent);
 
-            // Enviar email
-            $emailSent = $this->emailService->sendWithdrawNotification($withdraw);
-            $this->metricsService->recordEmailSent($emailSent);
+                    $duration = microtime(true) - $startTime;
+                    $this->metricsService->recordWithdrawProcessingTime($duration, $withdraw->scheduled);
+                    $this->metricsService->recordWithdrawProcessed(true);
 
-            $duration = microtime(true) - $startTime;
-            $this->metricsService->recordWithdrawProcessingTime($duration, $withdraw->scheduled);
-            $this->metricsService->recordWithdrawProcessed(true);
+                    // Disparar evento de processamento bem-sucedido
+                    $this->eventDispatcher->dispatch(new WithdrawProcessed($withdraw, $duration));
 
-            // Disparar evento de processamento bem-sucedido
-            $this->eventDispatcher->dispatch(new WithdrawProcessed($withdraw, $duration));
+                    // Auditoria de processamento
+                    $this->auditService->logWithdrawProcessed(
+                        $withdrawId,
+                        $withdraw->account_id,
+                        true,
+                        null,
+                        null // userId será obtido do contexto se disponível
+                    );
 
-            // Auditoria de processamento
-            $this->auditService->logWithdrawProcessed(
-                $withdrawId,
-                $withdraw->account_id,
-                true,
-                null,
-                null // userId será obtido do contexto se disponível
-            );
+                            $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
+                            $this->logger->info('Withdraw processed successfully', [
+                                'correlation_id' => $correlationId,
+                                'withdraw_id' => $withdrawId,
+                                'account_id' => $withdraw->account_id,
+                                'amount' => $withdraw->amount,
+                                'duration_seconds' => $duration,
+                            ]);
 
-            $this->logger->info('Withdraw processed successfully', [
-                'withdraw_id' => $withdrawId,
-                'account_id' => $withdraw->account_id,
-                'amount' => $withdraw->amount,
-                'duration_seconds' => $duration,
-            ]);
-
-            return true;
-        });
+                    return true;
+                });
+            },
+            60 // 60 segundos de lock (suficiente para processar saque)
+        ) ?? false;
     }
 
     public function processScheduledWithdraws(?int $maxConcurrency = null): int
@@ -307,7 +379,7 @@ class WithdrawService
         }
         
         // Usar distributed lock para evitar processamento duplicado
-        // em ambientes com múltiplas instâncias ou serverless
+        // em ambientes com múltiplas instâncias
         $lockKey = 'process_scheduled_withdraws';
         
         $result = $this->lockService->executeWithLock(
@@ -335,7 +407,9 @@ class WithdrawService
                             try {
                                 return $this->processWithdraw($withdraw->id);
                             } catch (\Throwable $e) {
+                                $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
                                 $this->logger->error('Error processing scheduled withdraw (parallel)', [
+                                    'correlation_id' => $correlationId,
                                     'withdraw_id' => $withdraw->id,
                                     'error' => $e->getMessage(),
                                 ]);
@@ -370,7 +444,9 @@ class WithdrawService
                             }
                         } catch (\Exception $e) {
                             $errorCount++;
+                            $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
                             $this->logger->error('Error processing scheduled withdraw', [
+                                'correlation_id' => $correlationId,
                                 'withdraw_id' => $withdraw->id,
                                 'error' => $e->getMessage(),
                             ]);

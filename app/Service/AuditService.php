@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use Hyperf\Context\Context;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,8 +31,12 @@ class AuditService
         ?string $accountId = null,
         array $metadata = []
     ): void {
+        // Obter correlation_id do contexto
+        $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
+        
         $auditData = [
             'timestamp' => date('c'),
+            'correlation_id' => $correlationId,
             'action' => $action,
             'entity_type' => $entityType,
             'entity_id' => $entityId,

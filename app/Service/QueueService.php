@@ -12,7 +12,7 @@ use Psr\Log\LoggerInterface;
  * Service para gerenciar filas assíncronas
  * 
  * Permite processamento assíncrono de operações
- * Compatível com SQS (AWS), Redis Queue, etc.
+ * Nota: Para implementações serverless, ver docs_ia/serverless-reference
  */
 class QueueService
 {

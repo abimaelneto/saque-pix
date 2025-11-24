@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface;
  * Service para gerenciar distributed locks usando Redis
  * 
  * Essencial para escalabilidade horizontal e evitar processamento duplicado
- * em ambientes serverless ou com múltiplas instâncias
+ * em ambientes com múltiplas instâncias
  */
 class DistributedLockService
 {

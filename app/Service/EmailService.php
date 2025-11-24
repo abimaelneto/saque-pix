@@ -13,6 +13,7 @@ class EmailService
     public function __construct(
         private LoggerInterface $logger,
         private MetricsService $metricsService,
+        private RetryService $retryService,
     ) {
     }
 
@@ -22,7 +23,9 @@ class EmailService
             $pix = $withdraw->pix;
             
             if (!$pix) {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
                 $this->logger->error('PIX data not found for withdraw', [
+                    'correlation_id' => $correlationId,
                     'withdraw_id' => $withdraw->id,
                 ]);
                 return false;
@@ -42,7 +45,9 @@ class EmailService
 
             // Em ambiente de testes, não tentar enviar emails reais
             if (env('APP_ENV') === 'testing') {
+                $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
                 $this->logger->info('Email send skipped in testing environment', [
+                    'correlation_id' => $correlationId,
                     'withdraw_id' => $withdraw->id,
                     'email' => $pix->key,
                 ]);
@@ -50,18 +55,36 @@ class EmailService
                 return true;
             }
 
-            // Implementação usando mail() do PHP
-            // Em produção serverless, usar serviço de email (SES, SendGrid, etc.)
-            // ou enfileirar via queue system
-            $headers = "MIME-Version: 1.0\r\n";
-            $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-            $headers .= "From: " . env('MAIL_FROM_ADDRESS', 'noreply@saque-pix.local') . "\r\n";
+            // Implementação usando SMTP diretamente com Mailhog
+            // Nota: Para produção, considerar usar serviço de email (SES, SendGrid, etc.)
+            // ou enfileirar via queue system (ver docs_ia/serverless-reference para exemplos)
+            $mailHost = env('MAIL_HOST', 'mailhog');
+            $mailPort = (int) env('MAIL_PORT', 1025);
+            $fromAddress = env('MAIL_FROM_ADDRESS', 'noreply@saque-pix.local');
+            $fromName = env('MAIL_FROM_NAME', 'Saque PIX');
             
-            $sent = @mail($pix->key, $subject, $body, $headers);
+            // Usar retry logic para enviar email (3 tentativas com exponential backoff)
+            $sent = $this->retryService->executeWithRetry(
+                function () use ($pix, $subject, $body, $mailHost, $mailPort, $fromAddress, $fromName) {
+                    return $this->sendViaSMTP(
+                        $mailHost,
+                        $mailPort,
+                        $fromAddress,
+                        $fromName,
+                        $pix->key,
+                        $subject,
+                        $body
+                    );
+                },
+                maxRetries: 3,
+                initialDelayMs: 1000 // 1 segundo inicial
+            );
 
             $this->metricsService->recordEmailSent($sent);
             
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id;
             $this->logger->info('Withdraw notification email sent', [
+                'correlation_id' => $correlationId,
                 'withdraw_id' => $withdraw->id,
                 'email' => $pix->key,
                 'sent' => $sent,
@@ -71,7 +94,9 @@ class EmailService
         } catch (\Exception $e) {
             $this->metricsService->recordEmailSent(false);
             
+            $correlationId = \Hyperf\Context\Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY) ?? $withdraw->correlation_id ?? null;
             $this->logger->error('Failed to send withdraw notification email', [
+                'correlation_id' => $correlationId,
                 'withdraw_id' => $withdraw->id,
                 'error' => $e->getMessage(),
             ]);
@@ -96,6 +121,88 @@ class EmailService
         </body>
         </html>
         ";
+    }
+
+    /**
+     * Envia email via SMTP diretamente (compatível com Mailhog)
+     */
+    private function sendViaSMTP(
+        string $host,
+        int $port,
+        string $fromAddress,
+        string $fromName,
+        string $toAddress,
+        string $subject,
+        string $body
+    ): bool {
+        $socket = @fsockopen($host, $port, $errno, $errstr, 10);
+        
+        if (!$socket) {
+            throw new \RuntimeException("Failed to connect to SMTP server: {$errstr} ({$errno})");
+        }
+
+        try {
+            // Ler resposta inicial
+            $this->readSMTPResponse($socket);
+
+            // EHLO
+            fwrite($socket, "EHLO {$host}\r\n");
+            $this->readSMTPResponse($socket);
+
+            // MAIL FROM
+            fwrite($socket, "MAIL FROM:<{$fromAddress}>\r\n");
+            $this->readSMTPResponse($socket);
+
+            // RCPT TO
+            fwrite($socket, "RCPT TO:<{$toAddress}>\r\n");
+            $this->readSMTPResponse($socket);
+
+            // DATA
+            fwrite($socket, "DATA\r\n");
+            $this->readSMTPResponse($socket);
+
+            // Headers e corpo
+            $emailContent = "From: {$fromName} <{$fromAddress}>\r\n";
+            $emailContent .= "To: <{$toAddress}>\r\n";
+            $emailContent .= "Subject: {$subject}\r\n";
+            $emailContent .= "MIME-Version: 1.0\r\n";
+            $emailContent .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $emailContent .= "\r\n";
+            $emailContent .= $body;
+            $emailContent .= "\r\n.\r\n";
+
+            fwrite($socket, $emailContent);
+            $this->readSMTPResponse($socket);
+
+            // QUIT
+            fwrite($socket, "QUIT\r\n");
+            $this->readSMTPResponse($socket);
+
+            return true;
+        } finally {
+            fclose($socket);
+        }
+    }
+
+    /**
+     * Lê resposta do servidor SMTP
+     */
+    private function readSMTPResponse($socket): string
+    {
+        $response = '';
+        while ($line = fgets($socket, 515)) {
+            $response .= $line;
+            if (substr($line, 3, 1) === ' ') {
+                break;
+            }
+        }
+        
+        $code = (int) substr($response, 0, 3);
+        if ($code >= 400) {
+            throw new \RuntimeException("SMTP error: {$response}");
+        }
+        
+        return $response;
     }
 }
 
