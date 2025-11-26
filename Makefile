@@ -92,20 +92,50 @@ clear-cache: ## Limpar cache do Hyperf
 	docker-compose exec app rm -rf /var/www/runtime/container/* 2>/dev/null || true
 	@echo "✅ Cache limpo!"
 
-stress-test: ## Executar stress testing básico
-	@echo "🔥 Iniciando stress testing..."
-	@echo "📝 Certifique-se de que o servidor está rodando (make start-bg)"
-	@echo ""
-	@bash scripts/stress-test.sh
+process-scheduled: ## Processar saques agendados manualmente (para testes)
+	@echo "⏰ Processando saques agendados pendentes..."
+	@docker-compose exec app php bin/hyperf.php withdraw:process-scheduled
 
-load-test: ## Gerar carga de 1000 req/s por 5 segundos (load test intensivo)
-	@echo "🔥 Iniciando Load Test - 1000 req/s por 5 segundos..."
+dev-with-cron: ## Iniciar servidor em modo dev + cron job em paralelo (2 terminais)
+	@echo "🔥 Iniciando servidor + cron job..."
+	@echo "📝 Este comando inicia o servidor em background e o cron em foreground"
+	@echo "💡 Para ver logs do servidor, use: docker-compose logs -f app"
+	@echo ""
+	@docker-compose exec -d app bash -c "rm -rf /var/www/runtime/container/* 2>/dev/null || true; php bin/hyperf.php start"
+	@sleep 3
+	@echo "✅ Servidor iniciado em background"
+	@echo "⏰ Iniciando cron job (pressione Ctrl+C para parar)..."
+	@echo ""
+	@bash scripts/run-cron.sh
+
+load-test: ## Gerar carga de 1000 req/s por 60 segundos (load test completo)
+	@echo "🔥 Iniciando Load Test - 1000 req/s por 60 segundos..."
 	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
 	@echo ""
-	@docker-compose exec -T app php scripts/load-test.php $(ARGS)
+	@docker-compose exec -T app php scripts/load-test.php $(ARGS) 60
+
+stress-test: ## Stress test completo com ondas de carga variável (60 segundos, cria 10 contas automaticamente)
+	@echo "🔥 Iniciando Stress Test Completo - Ondas de carga variável..."
+	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
+	@echo "💡 O script criará 10 contas automaticamente para distribuir a carga"
+	@echo ""
+	@echo "Uso: make stress-test [ou com ARGS=\"account_id email duration num_accounts\"]"
+	@echo "Exemplo: make stress-test ARGS=\"\" \"test@email.com\" 60 20"
+	@echo ""
+	@docker-compose exec -T app php scripts/stress-test-complete.php $(ARGS)
 
 load-test-continuous: ## Gerar carga contínua para visualizar no Grafana (1 req/s)
 	@echo "🔥 Gerando carga contínua (1 req/s)..."
 	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
 	@echo ""
 	@bash scripts/generate-load.sh
+
+stress-test-legacy: ## Stress testing básico via Apache Bench (script antigo)
+	@echo "⚠️  Executando stress testing legado (Apache Bench)..."
+	@echo "💡 Prefira 'make stress-test' para o cenário completo com ondas de carga"
+	@echo ""
+	@bash scripts/stress-test.sh
+
+verify-metrics: ## Verificar se as métricas do Prometheus estão corretas
+	@echo "🔍 Verificando métricas do Prometheus..."
+	@docker-compose exec -T app php scripts/verify-metrics.php

@@ -16,7 +16,7 @@ declare(strict_types=1);
 $BASE_URL = getenv('BASE_URL') ?: 'http://localhost:9501';
 $AUTH_TOKEN = getenv('AUTH_TOKEN') ?: 'Bearer test-token';
 $TARGET_RPS = 1000; // Requisições por segundo
-$DURATION = 5; // Segundos
+$DURATION = (int)($argv[3] ?? 60); // Segundos (padrão: 60s para teste completo)
 $MAX_CONCURRENT = 200; // Máximo de requisições concorrentes
 
 // Argumentos
@@ -35,19 +35,42 @@ echo "{$BLUE}🔥 Load Test - Saque PIX API{$NC}\n";
 echo str_repeat("=", 50) . "\n\n";
 
 // Verificar se servidor está rodando
-echo "{$YELLOW}🔍 Verificando servidor...{$NC}\n";
-$ch = curl_init("{$BASE_URL}/health");
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 3,
-    CURLOPT_CONNECTTIMEOUT => 2,
-]);
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+echo "{$YELLOW}🔍 Verificando servidor em {$BASE_URL}...{$NC}\n";
 
-if ($httpCode !== 200) {
+// Tentar algumas vezes com retry
+$maxRetries = 3;
+$serverOk = false;
+
+for ($i = 0; $i < $maxRetries; $i++) {
+    $ch = curl_init("{$BASE_URL}/health");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 5,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_FOLLOWLOCATION => true,
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    
+    if ($httpCode === 200) {
+        $serverOk = true;
+        break;
+    }
+    
+    if ($i < $maxRetries - 1) {
+        echo "   Tentativa " . ($i + 1) . " falhou (HTTP {$httpCode}), tentando novamente...\n";
+        usleep(500000); // 0.5s
+    }
+}
+
+if (!$serverOk) {
     echo "{$RED}❌ Servidor não está respondendo em {$BASE_URL}{$NC}\n";
+    if (!empty($error)) {
+        echo "   Erro: {$error}\n";
+    }
+    echo "   HTTP Code: {$httpCode}\n";
     echo "   Inicie o servidor com: make start-bg\n";
     exit(1);
 }
@@ -75,19 +98,22 @@ if (empty($accountId)) {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    if ($httpCode === 201) {
+    if ($httpCode === 201 || $httpCode === 200) {
         $data = json_decode($response, true);
-        $accountId = $data['data']['id'] ?? null;
+        
+        // Tentar diferentes formatos de resposta
+        $accountId = $data['data']['id'] ?? $data['id'] ?? null;
         
         if ($accountId) {
             echo "{$GREEN}✅ Conta criada: {$accountId}{$NC}\n\n";
         } else {
             echo "{$RED}❌ Falha ao obter ID da conta{$NC}\n";
+            echo "   Resposta: " . substr($response, 0, 200) . "\n";
             exit(1);
         }
     } else {
         echo "{$RED}❌ Falha ao criar conta (HTTP {$httpCode}){$NC}\n";
-        echo "   Resposta: {$response}\n";
+        echo "   Resposta: " . substr($response, 0, 200) . "\n";
         exit(1);
     }
 } else {
@@ -195,8 +221,7 @@ $stats['start_time'] = $startTime;
 $multiHandle = curl_multi_init();
 $activeHandles = []; // Array para rastrear handles ativos
 $requestCount = 0; // Contador total de requisições iniciadas
-$requestsPerSecond = $TARGET_RPS;
-$intervalBetweenRequests = 1.0 / $requestsPerSecond; // Tempo entre cada requisição (em segundos)
+$intervalBetweenRequests = 1.0 / $TARGET_RPS; // Tempo entre cada requisição (em segundos)
 $nextRequestTime = $startTime;
 
 // Loop principal - gerar requisições continuamente
@@ -209,18 +234,24 @@ while (true) {
         break;
     }
     
-    // Adicionar novas requisições para manter a taxa
-    // Calculamos quantas requisições deveríamos ter iniciado até agora
-    $targetRequestsStarted = (int)($requestsPerSecond * $elapsed);
-    $requestsToAdd = $targetRequestsStarted - $requestCount;
-    
-    // Adicionar requisições respeitando o limite de concorrência
-    while ($requestsToAdd > 0 && count($activeHandles) < $MAX_CONCURRENT && $currentTime < $endTime) {
-        $ch = createRequestHandle($BASE_URL, $AUTH_TOKEN, $accountId, $requestData);
-        curl_multi_add_handle($multiHandle, $ch);
-        $activeHandles[] = $ch;
-        $requestCount++;
-        $requestsToAdd--;
+    // Adicionar novas requisições para manter a taxa de 1000 req/s
+    // Usamos timing preciso: adicionar uma requisição a cada intervalo
+    while ($currentTime >= $nextRequestTime && $currentTime < $endTime) {
+        // Verificar se podemos adicionar mais requisições (limite de concorrência)
+        if (count($activeHandles) < $MAX_CONCURRENT) {
+            $ch = createRequestHandle($BASE_URL, $AUTH_TOKEN, $accountId, $requestData);
+            curl_multi_add_handle($multiHandle, $ch);
+            $activeHandles[] = $ch;
+            $requestCount++;
+        }
+        
+        // Agendar próxima requisição
+        $nextRequestTime += $intervalBetweenRequests;
+        
+        // Se estamos muito atrasados, ajustar para não acumular
+        if ($nextRequestTime < $currentTime) {
+            $nextRequestTime = $currentTime + $intervalBetweenRequests;
+        }
     }
     
     // Executar requisições pendentes
