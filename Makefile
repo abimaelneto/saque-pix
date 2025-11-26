@@ -195,24 +195,55 @@ stress-test-k6: ## Stress test usando k6 (recomendado - mais performático)
 	@if ! curl -s http://localhost:9501/health > /dev/null 2>&1; then \
 		echo "⚠️  Servidor não está respondendo. Iniciando servidor..."; \
 		$(MAKE) start-bg > /dev/null 2>&1; \
-		echo "⏳ Aguardando servidor inicializar (10 segundos)..."; \
-		sleep 10; \
-		for i in 1 2 3 4 5; do \
+		echo "⏳ Aguardando servidor inicializar (15 segundos)..."; \
+		sleep 15; \
+		for i in 1 2 3 4 5 6 7 8 9 10; do \
 			if curl -s http://localhost:9501/health > /dev/null 2>&1; then \
 				echo "✅ Servidor está respondendo!"; \
 				break; \
 			fi; \
-			echo "   Tentativa $$i/5..."; \
-			sleep 2; \
+			echo "   Tentativa $$i/10 (aguardando servidor iniciar)..."; \
+			sleep 3; \
 		done; \
 		if ! curl -s http://localhost:9501/health > /dev/null 2>&1; then \
 			echo "❌ Erro: Servidor não está respondendo após tentativas"; \
-			echo "   Execute manualmente: make start-bg"; \
-			echo "   E aguarde alguns segundos antes de executar o teste novamente"; \
+			echo "   Verificando logs do servidor..."; \
+			docker-compose logs app --tail=20 2>&1 | grep -E "(error|Error|ERROR|fatal|Fatal|FATAL)" || echo "   Nenhum erro óbvio nos logs"; \
+			echo ""; \
+			echo "   Tente executar manualmente:"; \
+			echo "   1. make start-bg"; \
+			echo "   2. Aguarde 10-15 segundos"; \
+			echo "   3. curl http://localhost:9501/health"; \
+			echo "   4. Se funcionar, execute make stress-test-k6 novamente"; \
 			exit 1; \
 		fi; \
 	else \
 		echo "✅ Servidor está respondendo!"; \
+		echo "⏳ Aguardando mais 3 segundos para garantir estabilidade..."; \
+		sleep 3; \
+	fi
+	@echo ""
+	@echo "🔍 Verificando se servidor está acessível na rede Docker..."
+	@if ! docker-compose exec -T app curl -s http://app:9501/health > /dev/null 2>&1; then \
+		echo "⚠️  Servidor não está acessível na rede Docker. Reiniciando servidor..."; \
+		$(MAKE) restart > /dev/null 2>&1; \
+		echo "⏳ Aguardando servidor reiniciar (10 segundos)..."; \
+		sleep 10; \
+		for i in 1 2 3 4 5; do \
+			if docker-compose exec -T app curl -s http://app:9501/health > /dev/null 2>&1; then \
+				echo "✅ Servidor está acessível na rede Docker!"; \
+				break; \
+			fi; \
+			echo "   Tentativa $$i/5..."; \
+			sleep 3; \
+		done; \
+		if ! docker-compose exec -T app curl -s http://app:9501/health > /dev/null 2>&1; then \
+			echo "❌ Erro: Servidor não está acessível na rede Docker"; \
+			echo "   Tente: make restart && sleep 10 && make stress-test-k6"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "✅ Servidor está acessível na rede Docker!"; \
 	fi
 	@echo ""
 	@echo "🚀 Executando k6 (container temporário será removido ao final)..."

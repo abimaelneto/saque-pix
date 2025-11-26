@@ -64,7 +64,7 @@ class ProcessScheduledWithdrawsTest extends TestCase
             CREATE TABLE IF NOT EXISTS account_withdraw_pix (
                 account_withdraw_id VARCHAR(36) PRIMARY KEY,
                 type VARCHAR(50),
-                key VARCHAR(255),
+                `key` VARCHAR(255),
                 created_at TIMESTAMP NULL,
                 updated_at TIMESTAMP NULL,
                 FOREIGN KEY (account_withdraw_id) REFERENCES account_withdraw(id) ON DELETE CASCADE
