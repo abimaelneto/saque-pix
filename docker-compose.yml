@@ -103,6 +103,20 @@ services:
     profiles:
       - observability  # Opcional: use 'docker-compose --profile observability up' para incluir
 
+  # k6 para stress testing (não precisa estar sempre rodando)
+  # Nota: docker-compose run cria containers temporários que são removidos com --rm
+  k6:
+    image: grafana/k6:latest
+    networks:
+      - saque-pix-network
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      - app
+    profiles:
+      - testing  # Opcional: apenas quando necessário
+    # Não tem command padrão - será executado via docker-compose run
+
 networks:
   saque-pix-network:
     driver: bridge
