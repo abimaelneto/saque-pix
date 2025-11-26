@@ -14,6 +14,7 @@ use App\Model\AccountWithdraw;
 use App\Model\AccountWithdrawPix;
 use App\Repository\AccountRepository;
 use App\Repository\AccountWithdrawRepository;
+use App\Helper\LogMasker;
 use App\Service\AuditService;
 use App\Service\DistributedLockService;
 use App\Service\EventDispatcherService;
@@ -50,11 +51,13 @@ class WithdrawService
             $existing = $this->withdrawRepository->findByIdempotencyKey($idempotencyKey);
             if ($existing) {
                 $correlationId = Context::get(\App\Middleware\CorrelationIdMiddleware::CORRELATION_ID_CONTEXT_KEY);
-                $this->logger->info('Idempotent request: returning existing withdraw', [
-                    'correlation_id' => $correlationId,
-                    'idempotency_key' => $idempotencyKey,
-                    'withdraw_id' => $existing->id,
-                ]);
+                $this->logger->info('Idempotent request: returning existing withdraw', 
+                    LogMasker::mask([
+                        'correlation_id' => $correlationId,
+                        'idempotency_key' => $idempotencyKey,
+                        'withdraw_id' => $existing->id,
+                    ])
+                );
                 return $existing;
             }
         }

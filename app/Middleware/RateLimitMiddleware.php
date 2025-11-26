@@ -31,10 +31,8 @@ class RateLimitMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // Desabilitar rate limiting em ambiente de desenvolvimento/teste
-        if (env('APP_ENV') === 'testing' || env('APP_ENV') === 'local') {
-            return $handler->handle($request);
-        }
+        // Rate limiting sempre ativo, mas com limites mais altos em desenvolvimento
+        // Isso mantém a proteção mesmo em dev, mas permite testes mais flexíveis
 
         $identifier = $this->getIdentifier($request);
         $limit = $this->getLimit($request);
@@ -134,15 +132,16 @@ class RateLimitMiddleware implements MiddlewareInterface
         $path = $request->getUri()->getPath();
         
         // Limites mais restritivos para endpoints críticos
-        // Em produção, usar valores mais conservadores
-        // Em desenvolvimento/teste, permitir carga alta
+        $isProduction = env('APP_ENV') === 'production';
+        
         if (str_contains($path, '/withdraw')) {
             // Em produção: 10 saques por minuto por conta
-            // Em desenvolvimento: permitir carga alta para testes
-            return env('APP_ENV') === 'production' ? 10 : 10000;
+            // Em desenvolvimento: 1000 (ainda protegido, mas permite testes)
+            return $isProduction ? 10 : 1000;
         }
 
-        return self::DEFAULT_LIMIT;
+        // Limite padrão: mais alto em dev para permitir testes
+        return $isProduction ? self::DEFAULT_LIMIT : (self::DEFAULT_LIMIT * 10);
     }
 
     /**

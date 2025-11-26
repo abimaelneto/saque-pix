@@ -24,7 +24,7 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
         // Permitir inline scripts e event handlers apenas para /admin (painel interno)
         $path = $request->getUri()->getPath();
         $csp = str_starts_with($path, '/admin')
-            ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+            ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';"
             : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';";
         
         $response = $response->withHeader('Content-Security-Policy', $csp);

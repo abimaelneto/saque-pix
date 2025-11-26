@@ -503,6 +503,117 @@ Authorization: Bearer test-token
 
 ---
 
+## 🔒 Segurança
+
+O projeto implementa **múltiplas camadas de segurança** para proteger dados sensíveis e prevenir ataques:
+
+### Camadas de Segurança Implementadas
+
+- ✅ **Autenticação JWT Real** - Validação de tokens JWT usando `firebase/php-jwt` (HS256)
+- ✅ **Proteção de Rotas Administrativas** - Middleware específico para `/admin/*` e `/accounts/*`
+- ✅ **Criptografia de Dados Sensíveis** - Chaves PIX criptografadas com **AES-256-GCM** (OpenSSL)
+- ✅ **Mascaramento de Logs** - Dados sensíveis (PIX keys, tokens, IDs) são mascarados automaticamente
+- ✅ **Rate Limiting** - Proteção contra DDoS e força bruta (configurável por ambiente)
+- ✅ **Security Headers** - Headers HTTP de segurança (CSP, HSTS, X-Frame-Options, etc.)
+- ✅ **Autorização por Conta** - Validação de acesso por conta em operações de saque
+- ✅ **Detecção de Fraude** - Sistema de detecção de padrões suspeitos
+
+### Autenticação
+
+#### Desenvolvimento (Token de Teste)
+
+Para desenvolvimento local, você pode usar o token de teste:
+```bash
+Authorization: Bearer test-token
+```
+
+#### Produção (Tokens JWT)
+
+Para gerar tokens JWT reais para testes:
+```bash
+docker-compose exec app php scripts/generate-jwt-token.php user-123 account-456
+```
+
+O token gerado pode ser usado no header:
+```bash
+Authorization: Bearer <token-jwt-gerado>
+```
+
+**Estrutura do Token JWT:**
+- `user_id`: ID do usuário
+- `account_id`: ID da conta (opcional)
+- `exp`: Data de expiração (padrão: 1 hora)
+
+### Criptografia de Chaves PIX
+
+Todas as chaves PIX são **criptografadas automaticamente** antes de serem armazenadas no banco de dados:
+
+- **Algoritmo**: AES-256-GCM (OpenSSL)
+- **IV**: 96 bits (12 bytes) gerado aleatoriamente para cada criptografia
+- **Tag de Autenticação**: 128 bits (16 bytes) para garantir integridade
+- **Chave**: Derivada de `ENCRYPTION_KEY` (32 bytes obrigatória em produção)
+
+As chaves são descriptografadas automaticamente quando necessário para processamento.
+
+### Proteção de Rotas Administrativas
+
+Rotas administrativas (`/admin/*` e `/accounts/*`) são protegidas por `AdminAuthMiddleware`:
+
+- **Em desenvolvimento**: Acesso permitido sem autenticação (para facilitar testes)
+- **Em produção**: Requer token JWT válido ou `ADMIN_SECRET_TOKEN`
+- **Exceção**: A página HTML `/admin` permanece acessível para visualização
+
+### Mascaramento de Logs
+
+Dados sensíveis são automaticamente mascarados em logs:
+
+- Chaves PIX: `joao@email.com` → `jo***@email.com`
+- Tokens: `Bearer abc123...` → `Bearer ***`
+- IDs: `550e8400-...` → `550e***`
+- Campos sensíveis: `pix_key`, `token`, `authorization`, `idempotency_key`, etc.
+
+### Variáveis de Ambiente de Segurança
+
+Configure estas variáveis **obrigatórias** em produção:
+
+```bash
+# Autenticação JWT
+JWT_SECRET=your-secret-key-here-min-32-chars
+
+# Acesso Administrativo
+ADMIN_SECRET_TOKEN=your-admin-secret-token
+
+# Criptografia (deve ser exatamente 32 bytes)
+ENCRYPTION_KEY=your-32-byte-encryption-key-here
+```
+
+**⚠️ IMPORTANTE:**
+- Use chaves fortes e aleatórias em produção
+- Nunca commite essas variáveis no repositório
+- Gere chaves diferentes para cada ambiente
+- Para `ENCRYPTION_KEY`, use exatamente 32 bytes (256 bits)
+
+Veja [ENV-VARIABLES.md](ENV-VARIABLES.md) para mais detalhes.
+
+### Documentação Completa
+
+Para informações detalhadas sobre segurança:
+
+- 📋 **[Avaliação de Segurança](docs/AVALIACAO-SEGURANCA.md)** - Análise completa de vulnerabilidades identificadas
+- ✅ **[Correções Implementadas](docs/CORRECOES-SEGURANCA-IMPLEMENTADAS.md)** - Detalhes de todas as correções aplicadas
+- 🛠️ **[Plano de Correção](docs/PLANO-CORRECAO-SEGURANCA.md)** - Estratégia e fases de implementação
+
+### Boas Práticas
+
+1. **Nunca use tokens de teste em produção**
+2. **Configure todas as variáveis de segurança antes do deploy**
+3. **Use HTTPS em produção** (TLS 1.2+)
+4. **Monitore logs** para detectar tentativas de acesso não autorizado
+5. **Rotacione chaves periodicamente** (especialmente `ENCRYPTION_KEY` e `JWT_SECRET`)
+6. **Mantenha dependências atualizadas** (especialmente `firebase/php-jwt`)
+
+---
+
 ## 📮 Postman Collection
 
 Uma collection completa do Postman está disponível em `postman/Saque-PIX-API.postman_collection.json` com todos os testes organizados:
@@ -838,6 +949,9 @@ curl http://localhost:9501/metrics/json
 - **`docs/TESTE-SAQUE-AGENDADO.md`**: **Guia completo para testar saques agendados e validar o cron job**
 - **`docs/TROUBLESHOOTING-METRICAS.md`**: **Diagnóstico de problemas com métricas (CLI vs Grafana)**
 - **`docs/FERRAMENTAS-STRESS-TESTING.md`**: **Análise de ferramentas de stress testing (k6, Artillery, etc.)**
+- **`docs/TESTES-AUTOMATIZADOS.md`**: **Guia completo de testes automatizados**
+- **`docs/AVALIACAO-SEGURANCA.md`**: **Avaliação de segurança e vulnerabilidades**
+- **`docs/CORRECOES-SEGURANCA-IMPLEMENTADAS.md`**: **Correções de segurança implementadas**
 - **`docs_ia/`**: Documentação técnica completa
 
 ---

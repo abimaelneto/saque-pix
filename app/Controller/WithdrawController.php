@@ -29,11 +29,46 @@ class WithdrawController
         ServerRequestInterface $request,
         ResponseInterface $response
     ): PsrResponseInterface {
+        // Validar que usuário está autenticado
+        $userId = $request->getAttribute('user_id');
+        if (!$userId) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Unauthorized',
+                'message' => 'Authentication required',
+            ])->withStatus(401);
+        }
+
         // Verificar autorização: usuário só pode acessar sua própria conta
         $userAccountId = $request->getAttribute('account_id');
-        $userId = $request->getAttribute('user_id');
         
-        if ($userAccountId && $userAccountId !== $accountId) {
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        // Isso facilita testes e stress tests
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                // Permitir usar accountId da URL em desenvolvimento com test-token
+                $userAccountId = $accountId;
+            }
+        }
+        
+        // Se account_id não foi fornecido no token, não permitir acesso
+        // (em produção, o token JWT deve sempre incluir account_id)
+        if (!$userAccountId) {
+            $this->auditService->logUnauthorizedAccess(
+                "withdraw:{$accountId}",
+                $userId,
+                null
+            );
+            
+            return $response->json([
+                'success' => false,
+                'error' => 'Forbidden',
+                'message' => 'Account ID not found in token. Access denied.',
+            ])->withStatus(403);
+        }
+        
+        if ($userAccountId !== $accountId) {
             $this->auditService->logUnauthorizedAccess(
                 "withdraw:{$accountId}",
                 $userId,
@@ -219,11 +254,42 @@ class WithdrawController
         ServerRequestInterface $request,
         ResponseInterface $response
     ): PsrResponseInterface {
+        // Validar que usuário está autenticado
+        $userId = $request->getAttribute('user_id');
+        if (!$userId) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Unauthorized',
+                'message' => 'Authentication required',
+            ])->withStatus(401);
+        }
+
         // Verificar autorização: usuário só pode cancelar saques da própria conta
         $userAccountId = $request->getAttribute('account_id');
-        $userId = $request->getAttribute('user_id');
         
-        if ($userAccountId && $userAccountId !== $accountId) {
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                $userAccountId = $accountId;
+            }
+        }
+        
+        if (!$userAccountId) {
+            $this->auditService->logUnauthorizedAccess(
+                "cancel_withdraw:{$withdrawId}",
+                $userId,
+                null
+            );
+            
+            return $response->json([
+                'success' => false,
+                'error' => 'Forbidden',
+                'message' => 'Account ID not found in token. Access denied.',
+            ])->withStatus(403);
+        }
+        
+        if ($userAccountId !== $accountId) {
             $this->auditService->logUnauthorizedAccess(
                 "cancel_withdraw:{$withdrawId}",
                 $userId,
@@ -350,11 +416,42 @@ class WithdrawController
         ServerRequestInterface $request,
         ResponseInterface $response
     ): PsrResponseInterface {
+        // Validar que usuário está autenticado
+        $userId = $request->getAttribute('user_id');
+        if (!$userId) {
+            return $response->json([
+                'success' => false,
+                'error' => 'Unauthorized',
+                'message' => 'Authentication required',
+            ])->withStatus(401);
+        }
+
         // Verificar autorização: usuário só pode ver saques da própria conta
         $userAccountId = $request->getAttribute('account_id');
-        $userId = $request->getAttribute('user_id');
         
-        if ($userAccountId && $userAccountId !== $accountId) {
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                $userAccountId = $accountId;
+            }
+        }
+        
+        if (!$userAccountId) {
+            $this->auditService->logUnauthorizedAccess(
+                "list_withdraws:{$accountId}",
+                $userId,
+                null
+            );
+            
+            return $response->json([
+                'success' => false,
+                'error' => 'Forbidden',
+                'message' => 'Account ID not found in token. Access denied.',
+            ])->withStatus(403);
+        }
+        
+        if ($userAccountId !== $accountId) {
             $this->auditService->logUnauthorizedAccess(
                 "list_withdraws:{$accountId}",
                 $userId,

@@ -47,20 +47,36 @@ function createAccount(accountNumber) {
     });
     
     const params = {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': AUTH_TOKEN // Adicionar token de autenticação
+        },
         tags: { name: 'CreateAccount' },
-        timeout: '5s'
+        timeout: '10s'
     };
     
     const res = http.post(`${BASE_URL}/accounts`, payload, params);
     
+    // Verificar se resposta tem body válido antes de fazer parse
+    if (!res.body || res.body.trim() === '') {
+        console.error(`   ❌ Resposta vazia ao criar conta #${accountNumber} (status: ${res.status})`);
+        return null;
+    }
+    
     const success = check(res, {
         'account created': (r) => r.status === 201 || r.status === 200,
+        'has response body': (r) => r.body && r.body.trim() !== '',
     });
     
     if (success) {
-        const data = JSON.parse(res.body);
-        return data.data?.id || data.id;
+        try {
+            const data = JSON.parse(res.body);
+            return data.data?.id || data.id;
+        } catch (e) {
+            console.error(`   ❌ Erro ao fazer parse JSON da resposta (conta #${accountNumber}): ${e.message}`);
+            console.error(`   Resposta recebida: ${res.body.substring(0, 200)}`);
+            return null;
+        }
     }
     
     return null;
@@ -139,22 +155,31 @@ function createWithdraw(accountId, isScheduled = false) {
 export function setup() {
     console.log(`🔍 Verificando servidor em ${BASE_URL}...`);
     
-    // Aguardar servidor com retry (até 10 tentativas, 2s entre cada)
+    // Aguardar servidor com retry (até 20 tentativas, 3s entre cada)
     let healthRes = null;
     let serverOk = false;
-    const maxRetries = 10;
-    const retryDelay = 2; // segundos
+    const maxRetries = 20;
+    const retryDelay = 3; // segundos
     
     for (let i = 0; i < maxRetries; i++) {
-        healthRes = http.get(`${BASE_URL}/health`, { timeout: '5s' });
-        
-        if (healthRes.status === 200) {
-            serverOk = true;
-            break;
+        try {
+            healthRes = http.get(`${BASE_URL}/health`, { 
+                timeout: '10s',
+                tags: { name: 'HealthCheck' }
+            });
+            
+            if (healthRes && healthRes.status === 200) {
+                serverOk = true;
+                console.log(`✅ Servidor está respondendo! (tentativa ${i + 1})`);
+                break;
+            }
+        } catch (e) {
+            // Ignorar erros de conexão e continuar tentando
         }
         
         if (i < maxRetries - 1) {
-            console.log(`   Tentativa ${i + 1}/${maxRetries} falhou (HTTP ${healthRes.status}), aguardando ${retryDelay}s...`);
+            const status = healthRes ? healthRes.status : 'connection refused';
+            console.log(`   Tentativa ${i + 1}/${maxRetries} falhou (HTTP ${status}), aguardando ${retryDelay}s...`);
             sleep(retryDelay);
         }
     }
