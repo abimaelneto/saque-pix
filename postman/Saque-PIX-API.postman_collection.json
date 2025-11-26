@@ -7,7 +7,7 @@
 	},
 	"item": [
 		{
-			"name": "1. Health Check",
+			"name": "1. Health Check & Métricas",
 			"item": [
 				{
 					"name": "Health Check",
@@ -21,6 +21,71 @@
 						},
 						"description": "Verifica se o servidor está rodando e se banco/redis estão OK"
 					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 503\", function () {",
+									"    pm.expect([200, 503]).to.include(pm.response.code);",
+									"});",
+									"",
+									"pm.test(\"Response has status field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('status');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Métricas (Prometheus)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["metrics"]
+						},
+						"description": "Retorna métricas no formato Prometheus\n\n**Útil para:**\n- Integração com Prometheus\n- Monitoramento de performance\n- Análise de métricas do sistema"
+					},
+					"response": []
+				},
+				{
+					"name": "Métricas (JSON)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metrics/json",
+							"host": ["{{base_url}}"],
+							"path": ["metrics", "json"]
+						},
+						"description": "Retorna métricas no formato JSON com estatísticas enriquecidas\n\n**Inclui:**\n- Métricas de performance\n- Estatísticas de histogramas\n- Labels e valores\n- Timestamp"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has metrics\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('metrics');",
+									"    pm.expect(jsonData).to.have.property('timestamp');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"response": []
 				}
 			]
@@ -781,7 +846,293 @@
 			]
 		},
 		{
-			"name": "6. Verificações",
+			"name": "6. Admin & Observabilidade",
+			"item": [
+				{
+					"name": "Admin Dashboard (HTML)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin",
+							"host": ["{{base_url}}"],
+							"path": ["admin"]
+						},
+						"description": "Interface HTML administrativa\n\n**Acesse no navegador:** http://localhost:9501/admin\n\n**Funcionalidades:**\n- Visualizar contas\n- Criar contas\n- Ver saques\n- Processar saques agendados\n- Ver métricas e estatísticas"
+					},
+					"response": []
+				},
+				{
+					"name": "Admin - Listar Contas",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/accounts",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "accounts"]
+						},
+						"description": "Lista todas as contas (API admin)\n\n**Diferença da rota /accounts:**\n- Retorna até 50 contas mais recentes\n- Ordenado por data de criação (mais recentes primeiro)"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has success field\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Criar Conta",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Conta Admin\",\n  \"balance\": 2000.00\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/api/accounts",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "accounts"]
+						},
+						"description": "Cria uma nova conta via API admin\n\n**Campos:**\n- `name` (obrigatório): Nome da conta\n- `balance` (opcional): Saldo inicial"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"// Salvar account_id se criado",
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.id) {",
+									"        pm.collectionVariables.set('account_id', jsonData.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Listar Saques",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/withdraws",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "withdraws"]
+						},
+						"description": "Lista todos os saques (API admin)\n\n**Retorna:**\n- Todos os saques do sistema\n- Ordenados por data de criação\n- Inclui status, valores, datas"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Saques Agendados Pendentes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/withdraws/pending",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "withdraws", "pending"]
+						},
+						"description": "Lista apenas saques agendados pendentes\n\n**Útil para:**\n- Ver quantos saques estão aguardando processamento\n- Verificar se o cron está funcionando\n- Debug de saques agendados"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has pending_count\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('pending_count');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Processar Saques Agendados",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/process-scheduled",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "process-scheduled"]
+						},
+						"description": "Processa saques agendados manualmente\n\n**Equivalente ao comando CLI:**\n`docker-compose exec app php bin/hyperf.php withdraw:process-scheduled`\n\n**Retorna:**\n- Quantidade de saques processados\n- Mensagem de sucesso"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has processed count\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('processed');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Atualizar Saques para Passado (Teste)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/update-scheduled-for-past",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "update-scheduled-for-past"]
+						},
+						"description": "⚠️ **APENAS PARA TESTES**\n\nAtualiza saques agendados pendentes para 1 hora no passado.\n\n**Útil para:**\n- Testar processamento de saques agendados sem esperar\n- Forçar processamento imediato de saques agendados\n\n**⚠️ CUIDADO:** Isso modifica dados no banco. Use apenas em ambiente de desenvolvimento/testes."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"console.log('⚠️ Saques atualizados para o passado. Execute process-scheduled para processá-los.');"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Métricas",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/metrics",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "metrics"]
+						},
+						"description": "Retorna métricas do sistema (API admin)\n\n**Inclui:**\n- Métricas de performance\n- Contadores de requisições\n- Tempos de resposta\n- Estatísticas de saques"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has metrics data\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				},
+				{
+					"name": "Admin - Estatísticas",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/api/stats",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "api", "stats"]
+						},
+						"description": "Retorna estatísticas gerais do sistema\n\n**Inclui:**\n- Total de contas\n- Total de saques\n- Saques processados\n- Saques pendentes\n- Saques com erro\n- Valores totais"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has stats data\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.success).to.eql(true);",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "7. Verificações",
 			"item": [
 				{
 					"name": "Listar Saques (CLI)",
