@@ -29,6 +29,9 @@ services:
       - REDIS_DB=0
       - MAIL_HOST=mailhog
       - MAIL_PORT=1025
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     command: tail -f /dev/null
 
   mysql:
