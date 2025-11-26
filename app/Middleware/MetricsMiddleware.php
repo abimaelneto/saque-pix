@@ -25,21 +25,28 @@ class MetricsMiddleware implements MiddlewareInterface
     {
         $startTime = microtime(true);
         
-        // Obter método e path
+        // Obter método e path ANTES de processar (para garantir que temos os dados mesmo se houver erro)
         $method = $request->getMethod();
         $path = $request->getUri()->getPath();
         
-        // Processar requisição
-        $response = $handler->handle($request);
-        
-        // Calcular duração
-        $duration = microtime(true) - $startTime;
-        $statusCode = $response->getStatusCode();
-        
-        // Registrar métricas
-        $this->metricsService->recordHttpRequest($method, $path, $statusCode, $duration);
-        
-        return $response;
+        try {
+            // Processar requisição
+            $response = $handler->handle($request);
+            
+            // Calcular duração
+            $duration = microtime(true) - $startTime;
+            $statusCode = $response->getStatusCode();
+            
+            // Registrar métricas (sempre, mesmo para erros)
+            $this->metricsService->recordHttpRequest($method, $path, $statusCode, $duration);
+            
+            return $response;
+        } catch (\Throwable $e) {
+            // Em caso de exceção não capturada, registrar como erro 500
+            $duration = microtime(true) - $startTime;
+            $this->metricsService->recordHttpRequest($method, $path, 500, $duration);
+            throw $e;
+        }
     }
 }
 

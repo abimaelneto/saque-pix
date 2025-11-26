@@ -21,10 +21,13 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
         $response = $handler->handle($request);
 
         // Content Security Policy
-        $response = $response->withHeader(
-            'Content-Security-Policy',
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
-        );
+        // Permitir inline scripts e event handlers apenas para /admin (painel interno)
+        $path = $request->getUri()->getPath();
+        $csp = str_starts_with($path, '/admin')
+            ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-hashes'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';";
+        
+        $response = $response->withHeader('Content-Security-Policy', $csp);
 
         // X-Content-Type-Options: Previne MIME type sniffing
         $response = $response->withHeader('X-Content-Type-Options', 'nosniff');
