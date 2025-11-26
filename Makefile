@@ -24,15 +24,30 @@ down: ## Parar containers
 install: ## Instalar dependências
 	docker-compose exec app composer install
 
-migrate: ## Executar migrations do banco de dados
+wait-mysql: ## Aguardar MySQL estar pronto para conexões
+	@echo "⏳ Aguardando MySQL estar pronto..."
+	@timeout=60; \
+	elapsed=0; \
+	while [ $$elapsed -lt $$timeout ]; do \
+		if docker-compose exec -T app php -r "try { \$$pdo = new PDO('mysql:host=mysql;port=3306', 'root', 'root', [PDO::ATTR_TIMEOUT => 2]); echo 'OK'; } catch (Exception \$e) { exit(1); }" >/dev/null 2>&1; then \
+			echo "✅ MySQL está pronto!"; \
+			sleep 2; \
+			exit 0; \
+		fi; \
+		echo "   Aguardando MySQL... ($$elapsed/$$timeout segundos)"; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+	done; \
+	echo "❌ Timeout: MySQL não ficou pronto em $$timeout segundos"; \
+	exit 1
+
+migrate: wait-mysql ## Executar migrations do banco de dados
 	docker-compose exec app php bin/hyperf.php migrate
 
 seed: ## Popular banco de dados com dados de exemplo
 	docker-compose exec app php bin/hyperf.php db:seed
 
 setup: check-docker build up install migrate ## Setup completo (build + up + install + migrate)
-	@echo "⏳ Aguardando MySQL inicializar (30 segundos)..."
-	@sleep 30
 	@echo "🚀 Iniciando servidor..."
 	@$(MAKE) start-bg
 	@echo ""
