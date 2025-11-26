@@ -818,8 +818,6 @@ Erros: 120
 
 ### Stress Test de Escalabilidade (ondas de carga)
 
-Quando precisamos **provar** que o Hyperf está sustentando a escalabilidade horizontal exigida no `descricao-case.txt`, você pode usar:
-
 #### Opção 1: k6 (⭐ Recomendado - Mais Performático)
 
 ```bash
@@ -834,7 +832,6 @@ make stress-test-k6-custom EMAIL=test@email.com NUM_ACCOUNTS=20
 
 **Vantagens do k6:**
 - ✅ Mais performático (escrito em Go)
-- ✅ Scripts em JavaScript (mais fácil de manter)
 - ✅ Relatórios HTML automáticos
 - ✅ Integração nativa com Prometheus/Grafana
 - ✅ Melhor para CI/CD
@@ -947,9 +944,7 @@ curl http://localhost:9501/metrics/json
 - **`docs/OBSERVABILIDADE.md`**: Guia completo de observabilidade
 - **`docs/ESCALABILIDADE.md`**: **Como a arquitetura suporta grandes cargas e escalabilidade horizontal**
 - **`docs/TESTE-SAQUE-AGENDADO.md`**: **Guia completo para testar saques agendados e validar o cron job**
-- **`docs/TROUBLESHOOTING-METRICAS.md`**: **Diagnóstico de problemas com métricas (CLI vs Grafana)**
-- **`docs/FERRAMENTAS-STRESS-TESTING.md`**: **Análise de ferramentas de stress testing (k6, Artillery, etc.)**
-- **`docs/TESTES-AUTOMATIZADOS.md`**: **Guia completo de testes automatizados**
+- **`docs/TESTES-AUTOMATIZADOS.md`**: **Guia completo de testes automatizados** - NÃO FINALIZADO
 - **`docs/AVALIACAO-SEGURANCA.md`**: **Avaliação de segurança e vulnerabilidades**
 - **`docs/CORRECOES-SEGURANCA-IMPLEMENTADAS.md`**: **Correções de segurança implementadas**
 - **`docs_ia/`**: Documentação técnica completa

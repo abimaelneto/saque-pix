@@ -48,8 +48,6 @@ dist/
 *.txt
 
 **/.composer-cache/
-# Python (não usado no projeto)
-__pycache__/
-*.pyc
-*.pyo
-*.py
+
+docs_ia/
+docs/
