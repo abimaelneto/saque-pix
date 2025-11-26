@@ -11,6 +11,7 @@ use App\Repository\AccountWithdrawRepository;
 use App\Service\MetricsService;
 use App\Service\WithdrawService;
 use Hyperf\DbConnection\Db;
+use Hyperf\HttpMessage\Stream\SwooleStream;
 use Hyperf\HttpServer\Contract\RequestInterface;
 use Hyperf\HttpServer\Contract\ResponseInterface;
 use Hyperf\Validation\Contract\ValidatorFactoryInterface;
@@ -30,8 +31,13 @@ class AdminController
 
     public function index(ResponseInterface $response): PsrResponseInterface
     {
-        $html = $this->getAdminHtml();
-        return $response->html($html);
+        try {
+            $html = $this->getAdminHtml();
+            return $response->html($html);
+        } catch (\Throwable $e) {
+            $errorHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><h1>Erro</h1><p>' . htmlspecialchars($e->getMessage()) . '</p></body></html>';
+            return $response->html($errorHtml)->withStatus(500);
+        }
     }
 
     
@@ -94,15 +100,28 @@ class AdminController
     }
 
     
-    public function getWithdraws(ResponseInterface $response): PsrResponseInterface
+    public function getWithdraws(RequestInterface $request, ResponseInterface $response): PsrResponseInterface
     {
-        $withdraws = AccountWithdraw::with('pix')
+        // Parâmetros opcionais para filtro
+        $minutes = $request->input('minutes', null); // null = sem filtro (mostra todos)
+        $limit = (int) $request->input('limit', 50);
+        
+        $query = AccountWithdraw::with('pix');
+        
+        // Filtro opcional por intervalo de tempo (últimos X minutos)
+        if ($minutes !== null && $minutes > 0) {
+            $query->where('created_at', '>=', now()->subMinutes((int) $minutes));
+        }
+        
+        $withdraws = $query
             ->orderBy('created_at', 'desc')
-            ->limit(50)
+            ->limit($limit)
             ->get();
         
         return $response->json([
             'success' => true,
+            'count' => $withdraws->count(),
+            'filter' => $minutes ? "Últimos {$minutes} minutos" : 'Todos',
             'data' => $withdraws->map(function ($withdraw) {
                 return [
                     'id' => $withdraw->id,
@@ -536,7 +555,18 @@ class AdminController
 
             <div class="card">
                 <h2>Saques Recentes</h2>
-                <button onclick="loadWithdraws()" class="secondary">Atualizar</button>
+                <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                    <label>Filtrar por:</label>
+                    <select id="withdraws-filter" onchange="loadWithdraws()" style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="">Todos os saques</option>
+                        <option value="5">Últimos 5 minutos</option>
+                        <option value="15">Últimos 15 minutos</option>
+                        <option value="30">Últimos 30 minutos</option>
+                        <option value="60">Última hora</option>
+                        <option value="1440">Últimas 24 horas</option>
+                    </select>
+                    <button onclick="loadWithdraws()" class="secondary">Atualizar</button>
+                </div>
                 <div id="withdraws-table"></div>
             </div>
         </div>
@@ -663,12 +693,17 @@ class AdminController
 
         async function loadWithdraws() {
             try {
-                const res = await fetch(`${API_BASE}/withdraws`);
+                const filterSelect = document.getElementById('withdraws-filter');
+                const minutes = filterSelect ? filterSelect.value : '';
+                const url = minutes ? `${API_BASE}/withdraws?minutes=${minutes}` : `${API_BASE}/withdraws`;
+                
+                const res = await fetch(url);
                 const data = await res.json();
                 if (data.success) {
                     const table = document.getElementById('withdraws-table');
                     if (data.data.length === 0) {
-                        table.innerHTML = '<p>Nenhum saque encontrado.</p>';
+                        const filterMsg = data.filter ? ` (${data.filter})` : '';
+                        table.innerHTML = `<p>Nenhum saque encontrado${filterMsg}.</p>`;
                         return;
                     }
                     table.innerHTML = `
