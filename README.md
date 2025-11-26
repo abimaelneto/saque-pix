@@ -17,18 +17,32 @@ make setup
 
 Este comando faz tudo automaticamente:
 1. Build das imagens Docker
-2. Inicia containers (MySQL, Redis, Mailhog, App)
+2. Inicia containers (MySQL, Redis, Mailhog, App, **Prometheus, Grafana**)
 3. Instala dependências
 4. Executa migrations
 5. Aguarda MySQL inicializar
 6. Inicia servidor em background
+7. **Inicia Cron Job em foreground** (para acompanhar processamentos em tempo real)
 
 **⏱️ Tempo: ~2-3 minutos**
 
 **Servidor:** `http://localhost:9501`  
+**Admin UI:** `http://localhost:9501/admin` ⭐ **Interface web completa para gerenciar o sistema**  
 **Mailhog:** `http://localhost:8025`
+**Prometheus:** `http://localhost:9091`  
+**Grafana:** `http://localhost:3001` (usuário: `admin`, senha: `admin`)
 
-**⚠️ Importante:** Todas as requisições precisam do header `Authorization: Bearer test-token` (token de teste para desenvolvimento).
+**⏰ Cron Job:** O cron job de saques agendados roda automaticamente no terminal, processando saques a cada minuto. Você verá logs em tempo real como:
+```
+[2024-01-15 10:30:00] ⏰ Executando cron job...
+⏰ [CRON] Processing scheduled withdraws...
+✅ [CRON] Processed 2 scheduled withdraw(s).
+```
+
+**⚠️ Importante:** 
+- Todas as requisições precisam do header `Authorization: Bearer test-token` (token de teste para desenvolvimento)
+- O cron job roda no terminal após o setup - pressione `Ctrl+C` para parar
+- O servidor continua rodando em background mesmo se você parar o cron
 
 ### 🔥 Modo Desenvolvimento (Hot Reload)
 
@@ -49,9 +63,12 @@ Este comando usa o pacote oficial **hyperf/watcher** e:
 
 **⏰ Cron Job de Saques Agendados:**
 
-**IMPORTANTE:** O cron job do Hyperf roda automaticamente quando você usa `make start-bg` ou `make start`, mas **NÃO roda automaticamente com `make dev`** (server:watch).
+**IMPORTANTE:** 
+- Com `make setup`: O cron job roda automaticamente em foreground (você vê os logs no terminal)
+- Com `make start-bg` ou `make start`: O cron job roda automaticamente em background (via Hyperf Crontab)
+- Com `make dev`: O cron job **NÃO roda automaticamente** (server:watch não suporta crontab)
 
-**Opções para rodar o cron:**
+**Opções para rodar o cron durante desenvolvimento:**
 
 1. **Usar `make dev-with-cron`** (recomendado para desenvolvimento):
    ```bash
@@ -68,15 +85,16 @@ Este comando usa o pacote oficial **hyperf/watcher** e:
    bash scripts/run-cron.sh
    ```
 
-3. **Usar `make start-bg`** (cron roda automaticamente):
+3. **Usar `make start-bg`** (cron roda automaticamente em background):
    ```bash
    make start-bg
-   # O cron roda automaticamente a cada minuto
+   # O cron roda automaticamente a cada minuto (sem logs no terminal)
    ```
 
 **Logs do cron:**
-Quando o cron está rodando, você verá mensagens como:
+Quando o cron está rodando em foreground, você verá mensagens como:
 ```
+[2024-01-15 10:30:00] ⏰ Executando cron job...
 ⏰ [CRON] Processing scheduled withdraws...
 ✅ [CRON] Processed 3 scheduled withdraw(s).
 ```
@@ -148,6 +166,120 @@ docker volume ls | grep saque-pix
 # Se estiver tudo limpo, execute:
 make setup
 ```
+
+---
+
+## 🎛️ Interface Administrativa (Admin UI)
+
+A aplicação inclui uma **interface web completa** para gerenciar contas, saques e visualizar métricas do sistema.
+
+### Acessar a Interface Admin
+
+**URL:** http://localhost:9501/admin
+
+A interface está disponível automaticamente após o `make setup`. Não requer autenticação adicional (apenas o servidor precisa estar rodando).
+
+### Funcionalidades Disponíveis
+
+A interface admin possui **4 abas principais**:
+
+#### 1. 📊 Dashboard (Visão Geral)
+- **Estatísticas Gerais:**
+  - Total de contas cadastradas
+  - Total de saques (processados, pendentes, com erro)
+  - Valores totais sacados
+  - Taxa de sucesso
+- **Links Rápidos:**
+  - Mailhog (visualizar emails)
+  - Grafana (métricas avançadas)
+  - Prometheus (queries diretas)
+  - Health Check
+  - Métricas em JSON
+
+#### 2. 👥 Contas
+- **Criar Nova Conta:**
+  - Formulário simples com nome e saldo inicial
+  - Validação em tempo real
+  - Feedback visual de sucesso/erro
+- **Listar Contas:**
+  - Tabela com todas as contas (até 50 mais recentes)
+  - Mostra: ID, Nome, Saldo, Data de criação
+  - Botão para atualizar lista
+
+#### 3. 💰 Saques
+- **Listar Todos os Saques:**
+  - Visualização completa de todos os saques do sistema
+  - Filtros por status (processados, pendentes, erros)
+  - Informações detalhadas: valor, data, status, dados PIX
+- **Saques Agendados Pendentes:**
+  - Contador de saques agendados aguardando processamento
+  - Botão para processar manualmente
+  - Atualização em tempo real
+
+#### 4. ⚙️ Ações Administrativas
+- **Processar Saques Agendados:**
+  - Botão para processar manualmente todos os saques agendados pendentes
+  - Mostra quantos foram processados
+  - Útil para testes sem esperar o cron job
+- **Atualizar Saques para Passado (Teste):**
+  - ⚠️ **Apenas para testes**
+  - Atualiza saques agendados para 1 hora no passado
+  - Permite testar processamento imediato sem esperar
+- **Ver Métricas:**
+  - Métricas do sistema em formato JSON
+  - Performance, contadores, estatísticas
+- **Ver Estatísticas:**
+  - Resumo completo do sistema
+  - Totais, médias, percentuais
+
+### Como Usar
+
+1. **Acesse:** http://localhost:9501/admin
+2. **Crie uma conta:** Aba "Contas" → Preencha nome e saldo → Clique em "Criar Conta"
+3. **Visualize saques:** Aba "Saques" → Veja todos os saques criados
+4. **Processe saques agendados:** Aba "Saques" → Clique em "Processar Saques Agendados"
+5. **Veja métricas:** Aba "Dashboard" → Links para métricas e estatísticas
+
+### API Admin (Endpoints REST)
+
+A interface admin também expõe endpoints REST para integração:
+
+```bash
+# Listar contas
+GET /admin/api/accounts
+
+# Criar conta
+POST /admin/api/accounts
+{
+  "name": "João Silva",
+  "balance": 1000.00
+}
+
+# Listar saques
+GET /admin/api/withdraws
+
+# Saques pendentes
+GET /admin/api/withdraws/pending
+
+# Processar saques agendados
+POST /admin/api/process-scheduled
+
+# Métricas
+GET /admin/api/metrics
+
+# Estatísticas
+GET /admin/api/stats
+```
+
+**💡 Dica:** Todos esses endpoints também estão disponíveis na collection do Postman na seção "6. Admin & Observabilidade".
+
+### Recursos Visuais
+
+- ✅ Interface responsiva (funciona em desktop e mobile)
+- ✅ Atualização em tempo real (sem necessidade de refresh)
+- ✅ Feedback visual para todas as ações
+- ✅ Tabelas organizadas e fáceis de ler
+- ✅ Links rápidos para ferramentas externas (Mailhog, Grafana, etc.)
 
 ---
 
@@ -424,12 +556,18 @@ curl -X POST http://localhost:9501/account/test-id/balance/withdraw \
 ```
 
 ### Porta em uso
-Prometheus/Grafana são opcionais. O projeto funciona sem eles.
+Se as portas 9091 (Prometheus) ou 3001 (Grafana) estiverem em uso, você pode:
+- Parar os containers: `docker-compose stop prometheus grafana`
+- Ou alterar as portas no `docker-compose.yml`
+
+**Nota:** Prometheus e Grafana são iniciados automaticamente no `make setup` para permitir observabilidade durante os testes de stress.
 
 ### MySQL não inicia
 ```bash
 make clean
-make setup && sleep 30 && make start-bg
+make setup
+# O setup já inicia o servidor automaticamente
+# Se precisar apenas do servidor sem o cron, use: make start-bg
 ```
 
 ### Grafana não acessível
@@ -437,11 +575,13 @@ make setup && sleep 30 && make start-bg
 # Verificar se está rodando
 docker-compose ps grafana
 
-# Iniciar observabilidade
-make up-all
+# Se não estiver rodando, iniciar observabilidade
+docker-compose --profile observability up -d prometheus grafana
 sleep 10
 curl http://localhost:3001/api/health
 ```
+
+**Nota:** O `make setup` já inicia Prometheus e Grafana automaticamente.
 
 ---
 
@@ -449,14 +589,21 @@ curl http://localhost:3001/api/health
 
 ## 📊 Observabilidade (Grafana + Prometheus)
 
-### Iniciar Observabilidade
+**✅ Prometheus e Grafana são iniciados automaticamente no `make setup`**
+
+### Iniciar Observabilidade Manualmente
+
+Se você precisar iniciar apenas os serviços de observabilidade:
 
 ```bash
-# Iniciar todos os serviços incluindo Prometheus e Grafana
+# Iniciar Prometheus e Grafana
+docker-compose --profile observability up -d prometheus grafana
+
+# Ou iniciar todos os serviços
 make up-all
 ```
 
-**Aguarde ~30 segundos** para os serviços iniciarem completamente.
+**Aguarde ~10 segundos** para os serviços iniciarem completamente.
 
 ### Acessar Grafana
 
