@@ -26,15 +26,19 @@ class ProcessScheduledWithdrawsCommand extends HyperfCommand
         $this->setDescription('Process scheduled withdraws');
     }
 
-    #[Crontab(name: 'ProcessScheduledWithdraws', rule: '* * * * *', memo: 'Process scheduled withdraws')]
+    #[Crontab(name: 'ProcessScheduledWithdraws', rule: '* * * * *', memo: 'Process scheduled withdraws every minute')]
     public function handle(InputInterface $input, OutputInterface $output): int
     {
-        $output->writeln('Processing scheduled withdraws...');
+        $output->writeln('⏰ [CRON] Processing scheduled withdraws...');
 
         $withdrawService = $this->container->get(WithdrawService::class);
         $processed = $withdrawService->processScheduledWithdraws();
 
-        $output->writeln("Processed {$processed} scheduled withdraw(s).");
+        if ($processed > 0) {
+            $output->writeln("✅ [CRON] Processed {$processed} scheduled withdraw(s).");
+        } else {
+            $output->writeln("ℹ️  [CRON] No scheduled withdraws to process.");
+        }
 
         return 0;
     }
