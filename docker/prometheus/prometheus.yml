@@ -1,10 +1,22 @@
 global:
-  scrape_interval: 5s
-  evaluation_interval: 5s
+  scrape_interval: 1s  # Coleta mais frequente para capturar todos os dados
+  evaluation_interval: 1s
+  external_labels:
+    cluster: 'saque-pix'
+    environment: 'development'
+
+# Configuração de logs detalhados
+rule_files:
+  # Sem regras de alerta por enquanto
 
 scrape_configs:
   - job_name: 'saque-pix'
     metrics_path: /metrics
+    scrape_interval: 1s  # Coleta a cada 1 segundo durante testes
+    scrape_timeout: 500ms  # Timeout deve ser menor que o interval
     static_configs:
       - targets: ['app:9501']
+        labels:
+          service: 'saque-pix-api'
+          version: '1.0.0'
 

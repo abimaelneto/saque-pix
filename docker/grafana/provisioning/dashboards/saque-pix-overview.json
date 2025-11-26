@@ -4,7 +4,7 @@
   "title": "Saque PIX - Observabilidade",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "refresh": "5s",
   "panels": [
     {
@@ -24,14 +24,25 @@
       "targets": [
         {
           "expr": "sum(rate(http_requests_total[1m]))",
-          "legendFormat": "Requests",
+          "legendFormat": "Total",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{path=~\"/account/.*/balance/withdraw\"}[1m]))",
+          "legendFormat": "Withdraw Endpoint",
+          "refId": "B"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 1
+        }
+      }
     },
     {
       "id": 2,
-      "title": "Processamento de Saques (Δ 5m)",
+      "title": "Status Codes HTTP (req/s)",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -45,43 +56,156 @@
       },
       "targets": [
         {
-          "expr": "increase(withdraws_processed_total{status=\"success\"}[5m])",
+          "expr": "sum(rate(http_requests_total{status=~\"20[0-9]\"}[1m]))",
+          "legendFormat": "2xx (Sucesso)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"40[0-9]\"}[1m]))",
+          "legendFormat": "4xx (Erro Cliente)",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"50[0-9]\"}[1m]))",
+          "legendFormat": "5xx (Erro Servidor)",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=\"201\"}[1m]))",
+          "legendFormat": "201 (Created)",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=\"400\"}[1m]))",
+          "legendFormat": "400 (Bad Request)",
+          "refId": "E"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=\"429\"}[1m]))",
+          "legendFormat": "429 (Rate Limited)",
+          "refId": "F"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Saques Criados (últimos 5 min)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(withdraws_created_total{type=\"immediate\"}[5m]))",
+          "legendFormat": "Imediatos",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(withdraws_created_total{type=\"scheduled\"}[5m]))",
+          "legendFormat": "Agendados",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(increase(withdraws_created_total{status=\"error\"}[5m]))",
+          "legendFormat": "Erros",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Saques Processados (últimos 5 min)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(withdraws_processed_total{status=\"success\"}[5m]))",
           "legendFormat": "Sucesso",
           "refId": "A"
         },
         {
-          "expr": "increase(withdraws_processed_total{status=\"error\"}[5m])",
+          "expr": "sum(increase(withdraws_processed_total{status=\"error\"}[5m]))",
           "legendFormat": "Erro",
           "refId": "B"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      }
     },
     {
-      "id": 3,
-      "title": "Tempo Médio de Processamento (últimos 5 min)",
+      "id": 5,
+      "title": "Tempo Médio de Resposta (segundos)",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
+        "h": 6,
+        "w": 6,
         "x": 0,
-        "y": 8
+        "y": 16
       },
       "targets": [
         {
-          "expr": "avg_over_time(withdraw_processing_time_seconds[5m])",
+          "expr": "sum(rate(http_request_duration_seconds_sum{path=~\"/account/.*/balance/withdraw\"}[1m])) / sum(rate(http_request_duration_seconds_count{path=~\"/account/.*/balance/withdraw\"}[1m]))",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "decimals": 3
-        },
-        "overrides": []
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 0.5,
+                "color": "yellow"
+              },
+              {
+                "value": 1.0,
+                "color": "red"
+              }
+            ]
+          }
+        }
       },
       "options": {
         "colorMode": "value",
@@ -98,57 +222,146 @@
       }
     },
     {
-      "id": 4,
-      "title": "Emails Enviados vs Erros (Δ 5m)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 8
-      },
-      "targets": [
-        {
-          "expr": "increase(emails_sent_total{status=\"success\"}[5m])",
-          "legendFormat": "Sucesso",
-          "refId": "A"
-        },
-        {
-          "expr": "increase(emails_sent_total{status=\"error\"}[5m])",
-          "legendFormat": "Erro",
-          "refId": "B"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "title": "Alertas de Saldo Insuficiente (Δ 5m)",
+      "id": 6,
+      "title": "Taxa de Sucesso (%)",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 8
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 16
       },
       "targets": [
         {
-          "expr": "increase(insufficient_balance_total[5m])",
+          "expr": "(sum(rate(withdraws_processed_total{status=\"success\"}[5m])) / (sum(rate(withdraws_processed_total[5m])) + sum(rate(withdraws_created_total{status=\"error\"}[5m])))) * 100",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 90,
+                "color": "yellow"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Emails Enviados (últimos 5 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(emails_sent_total{status=\"success\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
           "decimals": 0
-        },
-        "overrides": []
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Erros de Saldo Insuficiente (últimos 5 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(insufficient_balance_total[5m])) + sum(increase(withdraws_created_total{status=\"error\",error_type=\"insufficient_balance\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
+            ]
+          }
+        }
       },
       "options": {
         "colorMode": "value",
@@ -173,4 +386,3 @@
     "to": "now"
   }
 }
-
