@@ -737,6 +737,7 @@ class AdminController
                                 `).join('')}
                             </tbody>
                         </table>
+                        ${data.filter ? `<p style="margin-top: 10px; color: #666; font-size: 0.9em;">Mostrando ${data.count} saque(s) - ${data.filter}</p>` : `<p style="margin-top: 10px; color: #666; font-size: 0.9em;">Mostrando ${data.count} saque(s)</p>`}
                     `;
                 }
             } catch (e) {
