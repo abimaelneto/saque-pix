@@ -938,19 +938,6 @@ curl http://localhost:9501/metrics/json
 
 ---
 
-## 📚 Documentação
-
-- **`docs/openapi.yaml`**: Especificação OpenAPI
-- **`docs/OBSERVABILIDADE.md`**: Guia completo de observabilidade
-- **`docs/ESCALABILIDADE.md`**: **Como a arquitetura suporta grandes cargas e escalabilidade horizontal**
-- **`docs/TESTE-SAQUE-AGENDADO.md`**: **Guia completo para testar saques agendados e validar o cron job**
-- **`docs/TESTES-AUTOMATIZADOS.md`**: **Guia completo de testes automatizados** - NÃO FINALIZADO
-- **`docs/AVALIACAO-SEGURANCA.md`**: **Avaliação de segurança e vulnerabilidades**
-- **`docs/CORRECOES-SEGURANCA-IMPLEMENTADAS.md`**: **Correções de segurança implementadas**
-- **`docs_ia/`**: Documentação técnica completa
-
----
-
 ## 📄 Licença
 
 MIT
