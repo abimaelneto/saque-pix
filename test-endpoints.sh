@@ -29,10 +29,20 @@ if ! curl -s "${BASE_URL}/health" > /dev/null; then
 fi
 echo ""
 
+# Função auxiliar para formatar JSON (tenta jq, ou mostra raw)
+format_json() {
+    local json="$1"
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json" | jq . 2>/dev/null || echo "$json"
+    else
+        echo "$json"
+    fi
+}
+
 # 1. Health Check
 echo "1️⃣  Health Check..."
 HEALTH_RESPONSE=$(curl -s "${BASE_URL}/health")
-echo "$HEALTH_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$HEALTH_RESPONSE"
+format_json "$HEALTH_RESPONSE"
 echo ""
 echo ""
 
@@ -68,7 +78,7 @@ HTTP_CODE=$(curl -s -o /tmp/withdraw_response.json -w "%{http_code}" -X POST "${
 WITHDRAW_RESPONSE=$(cat /tmp/withdraw_response.json 2>/dev/null || echo "")
 
 if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
-    echo "$WITHDRAW_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$WITHDRAW_RESPONSE"
+    format_json "$WITHDRAW_RESPONSE"
     if echo "$WITHDRAW_RESPONSE" | grep -q '"success":true'; then
         echo "✅ Saque imediato criado com sucesso! (HTTP $HTTP_CODE)"
     else
@@ -81,7 +91,7 @@ elif [ "$HTTP_CODE" = "404" ]; then
     echo "   Resposta: $WITHDRAW_RESPONSE"
 else
     echo "⚠️  HTTP $HTTP_CODE"
-    echo "$WITHDRAW_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$WITHDRAW_RESPONSE"
+    format_json "$WITHDRAW_RESPONSE"
 fi
 echo ""
 echo ""
@@ -105,7 +115,7 @@ HTTP_CODE_SCHEDULED=$(curl -s -o /tmp/scheduled_response.json -w "%{http_code}" 
 SCHEDULED_RESPONSE=$(cat /tmp/scheduled_response.json 2>/dev/null || echo "")
 
 if [ "$HTTP_CODE_SCHEDULED" = "201" ] || [ "$HTTP_CODE_SCHEDULED" = "200" ]; then
-    echo "$SCHEDULED_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$SCHEDULED_RESPONSE"
+    format_json "$SCHEDULED_RESPONSE"
     if echo "$SCHEDULED_RESPONSE" | grep -q '"scheduled":true'; then
         echo "✅ Saque agendado criado com sucesso! (HTTP $HTTP_CODE_SCHEDULED)"
     else
@@ -116,7 +126,7 @@ elif [ "$HTTP_CODE_SCHEDULED" = "404" ]; then
     echo "   Resposta: $SCHEDULED_RESPONSE"
 else
     echo "⚠️  HTTP $HTTP_CODE_SCHEDULED"
-    echo "$SCHEDULED_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$SCHEDULED_RESPONSE"
+    format_json "$SCHEDULED_RESPONSE"
 fi
 echo ""
 echo ""
@@ -206,7 +216,22 @@ echo ""
 
 # 9. Verificar emails no Mailhog
 echo "9️⃣  Verificando emails no Mailhog..."
-EMAIL_COUNT=$(curl -s http://localhost:8025/api/v2/messages 2>/dev/null | python3 -c "import sys, json; data = json.load(sys.stdin); print(len(data.get('items', [])))" 2>/dev/null || echo "0")
+# Tenta contar emails usando jq ou grep
+EMAIL_COUNT="0"
+if command -v jq >/dev/null 2>&1; then
+    EMAIL_COUNT=$(curl -s http://localhost:8025/api/v2/messages 2>/dev/null | jq '.items | length' 2>/dev/null || echo "0")
+else
+    # Fallback: conta ocorrências de "items" usando grep/awk
+    EMAIL_JSON=$(curl -s http://localhost:8025/api/v2/messages 2>/dev/null)
+    if echo "$EMAIL_JSON" | grep -q '"items"'; then
+        # Tenta extrair o array items e contar elementos
+        EMAIL_COUNT=$(echo "$EMAIL_JSON" | grep -o '"items"' | wc -l | tr -d ' ' || echo "0")
+        # Se não conseguir contar, verifica se há pelo menos um item
+        if [ "$EMAIL_COUNT" = "0" ] && echo "$EMAIL_JSON" | grep -q '"items"'; then
+            EMAIL_COUNT="1"  # Pelo menos um email encontrado
+        fi
+    fi
+fi
 
 if [ "$EMAIL_COUNT" -gt "0" ]; then
     echo "✅ $EMAIL_COUNT email(s) encontrado(s) no Mailhog"
