@@ -436,11 +436,11 @@ class AdminController
         <h1>💰 Admin Panel - Saque PIX</h1>
         
         <div class="tabs">
-            <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
-            <button class="tab" onclick="showTab('accounts')">Contas</button>
-            <button class="tab" onclick="showTab('withdraws')">Saques</button>
-            <button class="tab" onclick="showTab('scheduled')">Agendados</button>
-            <button class="tab" onclick="showTab('metrics')">Métricas</button>
+            <button class="tab active" onclick="showTab('dashboard', this)">Dashboard</button>
+            <button class="tab" onclick="showTab('accounts', this)">Contas</button>
+            <button class="tab" onclick="showTab('withdraws', this)">Saques</button>
+            <button class="tab" onclick="showTab('scheduled', this)">Agendados</button>
+            <button class="tab" onclick="showTab('metrics', this)">Métricas</button>
         </div>
 
         <!-- Dashboard Tab -->
@@ -476,8 +476,8 @@ class AdminController
                 <h2>Links Úteis</h2>
                 <div class="links">
                     <a href="http://localhost:8025" target="_blank">📧 Mailhog (Emails)</a>
-                    <a href="http://localhost:3000" target="_blank">📊 Grafana</a>
-                    <a href="http://localhost:9090" target="_blank">📈 Prometheus</a>
+                    <a href="http://localhost:3001" target="_blank">📊 Grafana</a>
+                    <a href="http://localhost:9091" target="_blank">📈 Prometheus</a>
                     <a href="/health" target="_blank">❤️ Health Check</a>
                     <a href="/metrics" target="_blank">📊 Métricas (Prometheus)</a>
                     <a href="/metrics/json" target="_blank">📊 Métricas (JSON)</a>
@@ -572,13 +572,22 @@ class AdminController
 
     <script>
         const API_BASE = '/admin/api';
-        const API_AUTH_HEADER = 'Bearer valid-jwt-token';
+        const API_AUTH_HEADER = 'Bearer test-token';  // Token de teste para desenvolvimento
 
-        function showTab(tabName) {
+        function showTab(tabName, clickedElement) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            if (clickedElement) {
+                clickedElement.classList.add('active');
+            } else {
+                // Fallback: encontrar tab pelo nome
+                document.querySelectorAll('.tab').forEach(tab => {
+                    if (tab.textContent.toLowerCase().includes(tabName.toLowerCase())) {
+                        tab.classList.add('active');
+                    }
+                });
+            }
             
             if (tabName === 'dashboard') loadStats();
             if (tabName === 'accounts') loadAccounts();
@@ -605,6 +614,8 @@ class AdminController
                 }
             } catch (e) {
                 console.error('Error loading stats:', e);
+                // Não mostrar erro no dashboard para não poluir a interface
+                // Os valores permanecerão como "-" se houver erro
             }
         }
 
@@ -643,6 +654,10 @@ class AdminController
                 }
             } catch (e) {
                 console.error('Error loading accounts:', e);
+                const table = document.getElementById('accounts-table');
+                if (table) {
+                    table.innerHTML = '<div class="alert error">Erro ao carregar contas: ' + e.message + '</div>';
+                }
             }
         }
 
@@ -691,6 +706,10 @@ class AdminController
                 }
             } catch (e) {
                 console.error('Error loading withdraws:', e);
+                const table = document.getElementById('withdraws-table');
+                if (table) {
+                    table.innerHTML = '<div class="alert error">Erro ao carregar saques: ' + e.message + '</div>';
+                }
             }
         }
 
@@ -731,6 +750,10 @@ class AdminController
                 }
             } catch (e) {
                 console.error('Error loading pending:', e);
+                const table = document.getElementById('pending-table');
+                if (table) {
+                    table.innerHTML = '<div class="alert error">Erro ao carregar saques pendentes: ' + e.message + '</div>';
+                }
             }
         }
 
@@ -739,10 +762,17 @@ class AdminController
                 const res = await fetch(`${API_BASE}/withdraws/pending`);
                 const data = await res.json();
                 if (data.success) {
-                    document.getElementById('pending-count').textContent = data.count;
+                    const countEl = document.getElementById('pending-count');
+                    if (countEl) {
+                        countEl.textContent = data.count;
+                    }
                 }
             } catch (e) {
                 console.error('Error loading pending count:', e);
+                const countEl = document.getElementById('pending-count');
+                if (countEl) {
+                    countEl.textContent = '?';
+                }
             }
         }
 
@@ -795,6 +825,10 @@ class AdminController
                 }
             } catch (e) {
                 console.error('Error loading metrics:', e);
+                const metricsDiv = document.getElementById('metrics-data');
+                if (metricsDiv) {
+                    metricsDiv.textContent = 'Erro ao carregar métricas: ' + e.message;
+                }
             }
         }
 
@@ -802,6 +836,14 @@ class AdminController
             e.preventDefault();
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData);
+            
+            // Converter balance para número
+            data.balance = parseFloat(data.balance);
+            
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            const originalText = submitButton.textContent;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Criando...';
             
             try {
                 const res = await fetch(`${API_BASE}/accounts`, {
@@ -811,15 +853,19 @@ class AdminController
                 });
                 const result = await res.json();
                 if (result.success) {
-                    alert('Conta criada com sucesso! ID: ' + result.data.id);
+                    alert('✅ Conta criada com sucesso!\n\nID: ' + result.data.id + '\nNome: ' + result.data.name + '\nSaldo: R$ ' + parseFloat(result.data.balance).toLocaleString('pt-BR', {minimumFractionDigits: 2}));
                     e.target.reset();
                     loadAccounts();
                     loadStats();
                 } else {
-                    alert('Erro: ' + (result.error || result.messages?.join(', ')));
+                    const errorMsg = result.error || result.messages?.join(', ') || 'Erro desconhecido';
+                    alert('❌ Erro ao criar conta:\n\n' + errorMsg);
                 }
             } catch (e) {
-                alert('Erro: ' + e.message);
+                alert('❌ Erro de conexão: ' + e.message);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = originalText;
             }
         });
 
@@ -828,20 +874,47 @@ class AdminController
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData);
             
-            const schedule = data.schedule ? new Date(data.schedule).toISOString().slice(0, 16).replace('T', ' ') : null;
+            // Validar Account ID (UUID)
+            if (!data.accountId || data.accountId.trim().length < 36) {
+                alert('❌ Account ID inválido. Deve ser um UUID válido.');
+                return;
+            }
+            
+            // Converter amount para número
+            const amount = parseFloat(data.amount);
+            if (isNaN(amount) || amount <= 0) {
+                alert('❌ Valor inválido. Deve ser um número maior que zero.');
+                return;
+            }
+            
+            // Converter schedule se fornecido
+            let schedule = null;
+            if (data.schedule) {
+                const scheduleDate = new Date(data.schedule);
+                if (isNaN(scheduleDate.getTime())) {
+                    alert('❌ Data de agendamento inválida.');
+                    return;
+                }
+                schedule = scheduleDate.toISOString().slice(0, 16).replace('T', ' ');
+            }
             
             const payload = {
                 method: 'PIX',
                 pix: {
                     type: 'email',
-                    key: data.pixKey
+                    key: data.pixKey.trim()
                 },
-                amount: data.amount,
+                amount: amount,
                 schedule: schedule
             };
             
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            const originalText = submitButton.textContent;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Criando...';
+            
             try {
-                const res = await fetch(`/account/${data.accountId}/balance/withdraw`, {
+                const res = await fetch(`/account/${data.accountId.trim()}/balance/withdraw`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -851,15 +924,20 @@ class AdminController
                 });
                 const result = await res.json();
                 if (res.ok && result.success) {
-                    alert('Saque criado com sucesso! ID: ' + result.data.id);
+                    const type = result.data.scheduled ? 'agendado' : 'imediato';
+                    alert('✅ Saque criado com sucesso!\n\nID: ' + result.data.id + '\nTipo: ' + type + '\nValor: R$ ' + parseFloat(result.data.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2}));
                     e.target.reset();
                     loadWithdraws();
                     loadStats();
                 } else {
-                    alert('Erro: ' + (result.error || JSON.stringify(result)));
+                    const errorMsg = result.error || result.message || result.errors?.join(', ') || 'Erro desconhecido';
+                    alert('❌ Erro ao criar saque:\n\n' + errorMsg + (result.errors ? '\n\nDetalhes:\n' + result.errors.join('\n') : ''));
                 }
             } catch (e) {
-                alert('Erro: ' + e.message);
+                alert('❌ Erro de conexão: ' + e.message);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = originalText;
             }
         });
 
