@@ -26,36 +26,32 @@ install: ## Instalar dependências
 
 wait-mysql: ## Aguardar MySQL estar pronto para conexões
 	@echo "⏳ Aguardando MySQL estar pronto..."
-	@timeout=60; \
-	elapsed=0; \
-	while [ $$elapsed -lt $$timeout ]; do \
-		if docker-compose exec -T app php -r "try { \$$pdo = new PDO('mysql:host=mysql;port=3306', 'root', 'root', [PDO::ATTR_TIMEOUT => 2]); echo 'OK'; } catch (Exception \$e) { exit(1); }" >/dev/null 2>&1; then \
-			echo "✅ MySQL está pronto!"; \
-			sleep 2; \
-			exit 0; \
-		fi; \
-		echo "   Aguardando MySQL... ($$elapsed/$$timeout segundos)"; \
-		sleep 2; \
-		elapsed=$$((elapsed + 2)); \
-	done; \
-	echo "❌ Timeout: MySQL não ficou pronto em $$timeout segundos"; \
-	exit 1
+	@docker-compose exec -T app php scripts/wait-for-mysql.php mysql 3306 root root 60
 
 migrate: wait-mysql ## Executar migrations do banco de dados
-	docker-compose exec app php bin/hyperf.php migrate
+	docker-compose exec app php bin/hyperf.php migrate --path=database/migrations
 
 seed: ## Popular banco de dados com dados de exemplo
 	docker-compose exec app php bin/hyperf.php db:seed
 
 setup: check-docker build up install migrate ## Setup completo (build + up + install + migrate)
-	@echo "🚀 Iniciando servidor..."
+	@echo "📊 Iniciando Prometheus e Grafana para observabilidade..."
+	@docker-compose --profile observability up -d prometheus grafana 2>/dev/null || true
+	@sleep 2
+	@echo "🚀 Iniciando servidor em background..."
 	@$(MAKE) start-bg
+	@sleep 3
 	@echo ""
 	@echo "✅ Setup completo!"
 	@echo "📡 Servidor rodando em http://localhost:9501"
 	@echo "📧 Mailhog em http://localhost:8025"
+	@echo "📊 Prometheus em http://localhost:9091"
+	@echo "📈 Grafana em http://localhost:3001 (admin/admin)"
 	@echo ""
-	@echo "🧪 Para testar, veja o README.md"
+	@echo "⏰ Iniciando Cron Job de Saques Agendados..."
+	@echo "   (Pressione Ctrl+C para parar)"
+	@echo ""
+	@bash scripts/run-cron.sh
 
 start: ## Iniciar servidor Hyperf (foreground)
 	docker-compose exec app php bin/hyperf.php start
@@ -179,8 +175,21 @@ load-test-continuous: ## Gerar carga contínua para visualizar no Grafana (1 req
 
 stress-test-k6: ## Stress test usando k6 (recomendado - mais performático)
 	@echo "🔥 Iniciando Stress Test com k6..."
-	@echo "💡 Abra o Grafana em http://localhost:3001 para ver métricas em tempo real"
 	@echo "💡 O script criará 10 contas automaticamente para distribuir a carga"
+	@echo ""
+	@echo "🔍 Verificando se Prometheus e Grafana estão rodando..."
+	@if ! docker-compose ps prometheus | grep -q "Up"; then \
+		echo "⚠️  Prometheus não está rodando. Iniciando..."; \
+		docker-compose --profile observability up -d prometheus grafana; \
+		echo "⏳ Aguardando Prometheus e Grafana inicializarem (5 segundos)..."; \
+		sleep 5; \
+	fi
+	@if docker-compose ps prometheus | grep -q "Up" && docker-compose ps grafana | grep -q "Up"; then \
+		echo "✅ Prometheus e Grafana estão rodando!"; \
+		echo "💡 Abra o Grafana em http://localhost:3001 (admin/admin) para ver métricas em tempo real"; \
+	else \
+		echo "⚠️  Prometheus/Grafana não estão disponíveis. Métricas não serão coletadas."; \
+	fi
 	@echo ""
 	@echo "🔍 Verificando se servidor está rodando..."
 	@if ! curl -s http://localhost:9501/health > /dev/null 2>&1; then \
