@@ -42,6 +42,16 @@ class WithdrawController
         // Verificar autorização: usuário só pode acessar sua própria conta
         $userAccountId = $request->getAttribute('account_id');
         
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        // Isso facilita testes e stress tests
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                // Permitir usar accountId da URL em desenvolvimento com test-token
+                $userAccountId = $accountId;
+            }
+        }
+        
         // Se account_id não foi fornecido no token, não permitir acesso
         // (em produção, o token JWT deve sempre incluir account_id)
         if (!$userAccountId) {
@@ -257,6 +267,14 @@ class WithdrawController
         // Verificar autorização: usuário só pode cancelar saques da própria conta
         $userAccountId = $request->getAttribute('account_id');
         
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                $userAccountId = $accountId;
+            }
+        }
+        
         if (!$userAccountId) {
             $this->auditService->logUnauthorizedAccess(
                 "cancel_withdraw:{$withdrawId}",
@@ -410,6 +428,14 @@ class WithdrawController
 
         // Verificar autorização: usuário só pode ver saques da própria conta
         $userAccountId = $request->getAttribute('account_id');
+        
+        // Em desenvolvimento/teste, permitir test-token sem account_id usar o accountId da URL
+        if (!$userAccountId && in_array(env('APP_ENV'), ['local', 'testing'])) {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader && str_contains($authHeader, 'test-token')) {
+                $userAccountId = $accountId;
+            }
+        }
         
         if (!$userAccountId) {
             $this->auditService->logUnauthorizedAccess(
