@@ -1,4 +1,4 @@
-.PHONY: help build up down install start test test-unit test-integration test-stress clean logs dev dev-clean restart clear-cache check-docker
+.PHONY: help build up down install start test test-unit test-integration test-stress clean reset logs dev dev-clean restart clear-cache check-docker
 
 help: ## Mostra esta mensagem de ajuda
 	@echo "Comandos disponíveis:"
@@ -91,6 +91,23 @@ clean: ## Limpar containers e volumes
 	docker-compose down -v
 	@echo "🧹 Limpando containers k6 temporários..."
 	@docker ps -a --filter "name=k6" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+
+reset: ## Reset completo: remove containers, volumes, imagens e cache (para testar do zero)
+	@echo "🔄 Reset completo do ambiente..."
+	@echo "⚠️  Isso irá remover TODOS os containers, volumes e dados do banco!"
+	@echo ""
+	@docker-compose down -v --remove-orphans 2>/dev/null || true
+	@echo "🧹 Limpando containers k6 temporários..."
+	@docker ps -a --filter "name=k6" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+	@echo "🧹 Limpando containers órfãos..."
+	@docker ps -a --filter "name=saque-pix" --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+	@echo "🗑️  Removendo volumes órfãos..."
+	@docker volume ls --filter "name=saque-pix" -q | xargs -r docker volume rm 2>/dev/null || true
+	@echo "🗑️  Removendo volumes do MySQL..."
+	@docker volume ls --filter "name=mysql" -q | xargs -r docker volume rm 2>/dev/null || true
+	@echo "🗑️  Removendo volumes do Redis..."
+	@docker volume ls --filter "name=redis" -q | xargs -r docker volume rm 2>/dev/null || true
+	@echo "✅ Reset completo! Execute 'make setup' para iniciar novamente."
 
 logs: ## Ver logs dos containers
 	docker-compose logs -f
